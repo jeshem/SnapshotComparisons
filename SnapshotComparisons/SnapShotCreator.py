@@ -1,4 +1,5 @@
 import oci
+import time
 
 class oci_limits(object):
 
@@ -12,33 +13,33 @@ class oci_limits(object):
     C_LIMITS_SERVICES = "services"
     C_LIMITS_QUOTAS = "quotas"
 
+    data = {}
+    error = 0
+    
     def __init__(self):
-        self.config = oci.config.DEFAULT_LOCATION
-        self.config_default = oci.config.DEFAULT_PROFILE
+        self.config_file = oci.config.DEFAULT_LOCATION
+        self.config_section = oci.config.DEFAULT_PROFILE
 
-        self.signer = generate_signer_from_config(self.config, self.config_default)
-
-    def generate_signer_from_config(self, config_file, config_section):
-            # create signer from config for authentication
-            # pass in oci.config.DEFAULT_LOCATION, oci.config.DEFAULT_PROFILE as arguments
-
-            self.config = oci.config.from_file(config_file, config_section)
-            self.signer = oci.signer.Signer(
-                tenancy=self.config["tenancy"],
-                user=self.config["user"],
-                fingerprint=self.config["fingerprint"],
-                private_key_file_location=self.config.get("key_file"),
-                pass_phrase=oci.config.get_config_value_or_default(self.config, "pass_phrase"),
-                private_key_content=self.config.get("key_content")
-            )
-
+        self.config = oci.config.from_file(self.config_file, self.config_section)
+        self.signer = oci.signer.Signer(
+            tenancy=self.config["tenancy"],
+            user=self.config["user"],
+            fingerprint=self.config["fingerprint"],
+            private_key_file_location=self.config.get("key_file"),
+            pass_phrase=oci.config.get_config_value_or_default(self.config, "pass_phrase"),
+            private_key_content=self.config.get("key_content")
+        )
+    
     # return tenancy data
     def get_tenancy(self):
         return self.data[self.C_IDENTITY][self.C_IDENTITY_TENANCY]
 
     # return compartment data
     def get_compartment(self):
-        return self.data[self.C_IDENTITY][self.C_IDENTITY_COMPARTMENTS]
+            return self.data[self.C_IDENTITY][self.C_IDENTITY_COMPARTMENTS]
+
+    def get_identity(self):
+        return self.data[self.C_IDENTITY]
 
     # initialize data key if not exist
     def __initialize_data_key(self, module, section):
@@ -46,6 +47,19 @@ class oci_limits(object):
             self.data[module] = {}
         if section not in self.data[module]:
             self.data[module][section] = []
+
+    # print print error
+    def __print_error(self, msg, e):
+        classname = type(self).__name__
+
+        if 'TooManyRequests' in str(e):
+            print(" - TooManyRequests Err in " + msg)
+        elif isinstance(e, KeyError):
+            print("\nError in " + classname + ":" + msg + ": KeyError " + str(e.args))
+        else:
+            print("\nError in " + classname + ":" + msg + ": " + str(e))
+
+        self.error += 1
 
     # __load_limits_main
     def __load_limits_main(self):
@@ -166,9 +180,7 @@ class oci_limits(object):
             self.__print_error("__load_limits", e)
             return data
 
-    ##########################################################################
     # __load_quotas
-    ##########################################################################
     def __load_quotas(self, quotas_client, compartments):
         data = []
         cnt = 0
@@ -239,4 +251,7 @@ class oci_limits(object):
         except Exception as e:
             self.__print_error("__load_quotas", e)
             return data
-pass
+
+    def get_limit_data(self):
+        self.__load_limits_main()
+    pass

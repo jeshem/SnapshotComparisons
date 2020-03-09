@@ -1,4 +1,4 @@
-import CSVToXLSX
+from GetSnapshots import get_snapshot
 
 '''
 To do list:
@@ -23,5 +23,11 @@ def main():
 	convert = CSVToXLSX.CSVToXLSX(loc, original, created)
 	convert.convert()
 
+	snapshot = oci_limits()
+	snapshot.__load_limits_main()
+
+def test():
+	snapshot = get_snapshot()
+
 if __name__ == "__main__":
-	main()
+	test()
