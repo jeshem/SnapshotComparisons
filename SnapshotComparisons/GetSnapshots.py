@@ -230,6 +230,19 @@ class get_snapshot(object):
 
 
     ##########################################################################
+    # Return lists
+    ##########################################################################
+    def get_FRA(self):
+        return self.FRA_limits
+
+    def get_PHX(self):
+        return self.PHX_limits
+
+    def get_IAD(self):
+        return self.IAD_limits
+
+
+    ##########################################################################
     # Exception catchers
     ##########################################################################
     def __load_print_auth_warning(self, special_char="a", increase_warning=True):
