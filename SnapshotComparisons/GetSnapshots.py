@@ -215,8 +215,6 @@ class get_snapshot(object):
                 print ("Availability Domain: " + things['availability_domain'])
             print ("}\n")
 
-        print ("Number of regions: " + str(self.number_of_regions))
-
 
     ##########################################################################
     # Return lists

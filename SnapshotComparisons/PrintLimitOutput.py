@@ -39,4 +39,18 @@ def print_limits(data):
             key = keys[col]
             FRA_limits.cell(row, col).value = thing[key]
 
+    for row in range(len(PHX_limits)):
+        thing = PHX_limits[row]
+        for col in range(len(keys)):
+            key = keys[col]
+            PHX_limits.cell(row, col).value = thing[key]
+
+    for row in range(len(IAD_limits)):
+        thing = IAD_limits[row]
+        for col in range(len(keys)):
+            key = keys[col]
+            IAD_limits.cell(row, col).value = thing[key]
+
+    wb.save("test.xlsx")
+
 
