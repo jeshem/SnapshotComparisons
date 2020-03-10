@@ -1,4 +1,5 @@
 from GetSnapshots import get_snapshot
+from PrintLimitOutput import print_limits
 
 '''
 To do list:
@@ -16,18 +17,13 @@ Note:
 '''
 
 def main():
-	location = r"insert directory here"
-	original = "insert name of csv file here.csv"
-	created = "insert name of xlsx file here.xlsx"
+	limits = []
 
-	convert = CSVToXLSX.CSVToXLSX(loc, original, created)
-	convert.convert()
-
-	snapshot = oci_limits()
-	snapshot.__load_limits_main()
-
-def test():
 	snapshot = get_snapshot()
+	limits = snapshot.get_data_list()
+
+	print_limits(limits)
+
 
 if __name__ == "__main__":
-	test()
+	main()

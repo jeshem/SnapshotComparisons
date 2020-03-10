@@ -15,9 +15,7 @@ class get_snapshot(object):
     data = {}
     number_of_regions = 0
 
-    PHX_limits = []
-    IAD_limits = []
-    FRA_limits = []
+    limit_data = []
 
     def __init__(self):
         self.config_file = oci.config.DEFAULT_LOCATION
@@ -147,8 +145,6 @@ class get_snapshot(object):
     # get limits
     ##########################################################################
     def get_limit(self, limits_client, tenancy_id):        
-        data = []
-
         services = []
         try:
             services = oci.pagination.list_call_get_all_results(limits_client.list_services, tenancy_id, sort_by="name").data
@@ -208,16 +204,9 @@ class get_snapshot(object):
                             pass
 
                         # add to array
-                        data.append(val)
+                        self.limit_data.append(val)
         
-        for things in data:
-            if things['region_name'] == 'eu-frankfurt-1':
-                self.FRA_limits.append(things)
-            elif things['region_name'] == 'us-phoenix-1':
-                self.PHX_limits.append(things)
-            elif things['region_name'] == 'us-ashburn-1':
-                self.IAD_limits.append(things)
-
+        for things in self.limit_data:
             print ("{")
             print ("Region: " + things['region_name'])
             print ("Limit Name: " + things['limit_name'])
@@ -232,14 +221,8 @@ class get_snapshot(object):
     ##########################################################################
     # Return lists
     ##########################################################################
-    def get_FRA(self):
-        return self.FRA_limits
-
-    def get_PHX(self):
-        return self.PHX_limits
-
-    def get_IAD(self):
-        return self.IAD_limits
+    def get_data_list(self):
+        return self.limit_data
 
 
     ##########################################################################
