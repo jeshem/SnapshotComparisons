@@ -99,6 +99,7 @@ class limit_output_and_compare(object):
             print(self.latest_file)
             self.compare_limits()
 
+    #get the limits from the latest limits excel file and compare them to the current limits
     def compare_limits(self):
         last_wb = openpyxl.load_workbook(self.loc + "\\" + self.latest_file)
         last_FRA_ws = last_wb['FRA']
@@ -113,7 +114,7 @@ class limit_output_and_compare(object):
         PHX_dif = []
         IAD_dif = []
 
-        #get the limits from each region in the last limits file
+        #retrieve the limits from each region in the last limits file
         for row in range(last_FRA_ws.max_row):
             cell_value = last_FRA_ws.cell(row+1, 6).value
             last_FRA_limits.append(cell_value)
@@ -124,6 +125,7 @@ class limit_output_and_compare(object):
             cell_value = last_IAD_ws.cell(row+1, 6).value
             last_IAD_limits.append(cell_value)
 
+        #compare limits from last time it was retrieved to the current limits
         if len(last_FRA_limits)>1:
             for thing in range(len(last_FRA_limits)):
                 difference = self.FRA_limits[thing]['value'] - last_FRA_limits[thing]

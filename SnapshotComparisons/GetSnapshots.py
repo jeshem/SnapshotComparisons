@@ -102,10 +102,14 @@ class get_snapshot(object):
                 else:
                     raise
 
-            for es in sub_regions:
-                data_subs = [str(es.region_name)]
-                self.number_of_regions += 1
+            data_subs = ['eu-frankfurt-1',
+                         'us-phoenix-1',
+                         'us-ashburn-1']
+            #for es in sub_regions:
+                #data_subs = [str(es.region_name)]
+                #self.number_of_regions += 1
             
+
             data = {
                 'id': tenancy.id,
                 'name': tenancy.name,
