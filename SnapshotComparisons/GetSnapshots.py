@@ -177,7 +177,7 @@ class get_snapshot(object):
                             'limit_name': str(limit.name),
                             'availability_domain': ("" if limit.availability_domain is None else str(limit.availability_domain)),
                             'scope_type': str(limit.scope_type),
-                            'value': str(limit.value),
+                            'value': int(limit.value),
                             'used': "",
                             'available': "",
                             'region_name': str(self.config['region'])
@@ -210,7 +210,7 @@ class get_snapshot(object):
             print ("{")
             print ("Region: " + things['region_name'])
             print ("Limit Name: " + things['limit_name'])
-            print ("Limit: " + things['value'])
+            print ("Limit: " + str(things['value']))
             if things['availability_domain'] != "":
                 print ("Availability Domain: " + things['availability_domain'])
             print ("}\n")
