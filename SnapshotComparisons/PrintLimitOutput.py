@@ -1,12 +1,13 @@
 from openpyxl import Workbook
 import openpyxl
 from datetime import datetime
+from datetime import date
 import os
 import time
 
 class limit_output_and_compare(object):
-    date = datetime.date(datetime.now())
-    today = str(date)
+    date = datetime.now()
+    today = date.strftime("%Y-%m-%d, %H-%M-%S")
 
     FRA_limits = []
     PHX_limits = []
@@ -73,7 +74,8 @@ class limit_output_and_compare(object):
         dirs = os.listdir(self.loc)
         found_a_file = False
 
-        last_date = time.time()
+        last_date = self.date
+
 
         for file in dirs:
             #if the file is a directory, go into it and check for more files
@@ -81,15 +83,18 @@ class limit_output_and_compare(object):
                         list = self.find_new_files(loc + "\\" + file)
 
             #get the date the limits file was modified/created
-            file_create_date = os.path.getctime(loc + "\\" + file)
-            
+            file_create_date = datetime.fromtimestamp(os.path.getctime(loc + "\\" + file))
+
+            #if last_date is still today, set last date to the file's creation date
+            if last_date == self.date:
+                last_date = file_create_date
             #find the latest limits
-            if file_create_date < last_date:
+            elif file_create_date < self.date and file_create_date > last_date:
                 last_date = file_create_date
                 self.latest_file = file
 
         if self.latest_file == '':
-            print("No previous limits found")
+            print("No previous record of limits found")
         else:
             print(self.latest_file)
             self.compare_limits()
@@ -123,6 +128,7 @@ class limit_output_and_compare(object):
             for thing in range(len(last_FRA_limits)):
                 difference = self.FRA_limits[thing]['value'] - last_FRA_limits[thing]
                 val = {'region_name': self.FRA_limits[thing]['region_name'],
+                       'availability_domain': self.FRA_limits[thing]['availability_domain'],
                        'name': self.FRA_limits[thing]['limit_name'],
                        'difference': difference}
                 FRA_dif.append(val)
@@ -130,6 +136,7 @@ class limit_output_and_compare(object):
             for thing in range(len(last_PHX_limits)):
                 difference = self.PHX_limits[thing]['value'] - last_PHX_limits[thing]
                 val = {'region_name': self.PHX_limits[thing]['region_name'],
+                       'availability_domain': self.PHX_limits[thing]['availability_domain'],
                        'name': self.PHX_limits[thing]['limit_name'],
                        'difference': difference}
                 PHX_dif.append(val)
@@ -137,6 +144,7 @@ class limit_output_and_compare(object):
             for thing in range(len(last_PHX_limits)):
                 difference = self.IAD_limits[thing]['value'] - last_IAD_limits[thing]
                 val = {'region_name': self.IAD_limits[thing]['region_name'],
+                       'availability_domain': self.IAD_limits[thing]['availability_domain'],
                        'name': self.IAD_limits[thing]['limit_name'],
                        'difference': difference}
 
