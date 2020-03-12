@@ -122,23 +122,34 @@ class limit_output_and_compare(object):
         if len(last_FRA_limits)>1:
             for thing in range(len(last_FRA_limits)):
                 difference = self.FRA_limits[thing]['value'] - last_FRA_limits[thing]
-                val = {'name': self.FRA_limits[thing]['limit_name'],
+                val = {'region_name': self.FRA_limits[thing]['region_name'],
+                       'name': self.FRA_limits[thing]['limit_name'],
                        'difference': difference}
                 FRA_dif.append(val)
         if len(last_PHX_limits)>1:
             for thing in range(len(last_PHX_limits)):
                 difference = self.PHX_limits[thing]['value'] - last_PHX_limits[thing]
-                val = {'name': self.PHX_limits[thing]['limit_name'],
+                val = {'region_name': self.PHX_limits[thing]['region_name'],
+                       'name': self.PHX_limits[thing]['limit_name'],
                        'difference': difference}
                 PHX_dif.append(val)
         if len(last_IAD_limits)>1:
             for thing in range(len(last_PHX_limits)):
                 difference = self.IAD_limits[thing]['value'] - last_IAD_limits[thing]
-                val = {'name': self.IAD_limits[thing]['limit_name'],
+                val = {'region_name': self.IAD_limits[thing]['region_name'],
+                       'name': self.IAD_limits[thing]['limit_name'],
                        'difference': difference}
 
+        
+        for thing in FRA_dif:
+            if thing['difference'] != 0:
+                print(str(thing))       
         for thing in PHX_dif:
-            print(str(thing))
+            if thing['difference'] != 0:
+                print(str(thing))
+        for thing in IAD_dif:
+            if thing['difference'] != 0:
+                print(str(thing))
 
 
         pass
