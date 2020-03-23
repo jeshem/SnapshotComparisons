@@ -129,14 +129,13 @@ class get_snapshot(object):
     def get_tenancy_id(self):
         return self.config["tenancy"]
 
-        ##########################################################################
+    ##########################################################################
     # Load compartments
     ##########################################################################
-    def __load_identity_compartments(self, identity):
+    def load_identity_compartments(self, identity):
 
         compartments = []
         self.__load_print_status("Compartments")
-        start_time = time.time()
 
         try:
             # point to tenancy
@@ -180,9 +179,8 @@ class get_snapshot(object):
             ###################################################
             # Add root compartment
             ###################################################
-            if self.flags.read_root_compartment:
-                value = {'id': tenancy['id'], 'name': tenancy['name'] + " (root)", 'path': "/ " + tenancy['name'] + " (root)"}
-                compartments.append(value)
+            root_compartment = {'id': tenancy['id'], 'name': tenancy['name'] + " (root)", 'path': "/ " + tenancy['name'] + " (root)"}
+            compartments.append(root_compartment)
 
             # Build the compartments
             build_compartments_nested(identity, tenancy['id'], "")
@@ -191,33 +189,7 @@ class get_snapshot(object):
             sorted_compartments = sorted(compartments, key=lambda k: k['path'])
 
             # if not filtered by compartment return
-            if not (self.flags.filter_by_compartment or self.flags.filter_by_compartment_path or self.flags.filter_by_compartment_recursive):
-                self.data[self.C_IDENTITY][self.C_IDENTITY_COMPARTMENTS] = sorted_compartments
-                self.__load_print_cnt(len(compartments), start_time)
-                return
-
-            filtered_compart = []
-
-            # if filter by compartment, then reduce list and return new list
-            if self.flags.filter_by_compartment:
-                for x in sorted_compartments:
-                    if self.flags.filter_by_compartment in x['name'] or self.flags.filter_by_compartment in x['id']:
-                        filtered_compart.append(x)
-
-            # if filter by path compartment, then reduce list and return new list
-            if self.flags.filter_by_compartment_path:
-                for x in sorted_compartments:
-                    if self.flags.filter_by_compartment_path == x['path']:
-                        filtered_compart.append(x)            # if filter by path compartment, then reduce list and return new list
-
-            if self.flags.filter_by_compartment_recursive:
-                for x in sorted_compartments:
-                    if self.flags.filter_by_compartment_recursive in x['path']:
-                        filtered_compart.append(x)
-
-            # add to data
-            self.data[self.C_IDENTITY][self.C_IDENTITY_COMPARTMENTS] = filtered_compart
-            self.__load_print_cnt(len(filtered_compart), start_time)
+            self.data[self.C_IDENTITY][self.C_IDENTITY_COMPARTMENTS] = sorted_compartments
 
         except oci.exceptions.RequestException:
             raise
@@ -227,11 +199,7 @@ class get_snapshot(object):
     ##########################################################################
     # Load single compartment to support BOAT authentication
     ##########################################################################
-    def __load_identity_single_compartments(self, identity):
-
-        self.__load_print_status("Compartments")
-        start_time = time.time()
-
+    def load_identity_single_compartments(self, identity):
         compartments = []
         try:
 
@@ -250,7 +218,6 @@ class get_snapshot(object):
                 compartments.append(cvalue)
 
             self.data[self.C_IDENTITY][self.C_IDENTITY_COMPARTMENTS] = compartments
-            self.__load_print_cnt(len(compartments), start_time)
 
         except oci.exceptions.RequestException:
             raise
