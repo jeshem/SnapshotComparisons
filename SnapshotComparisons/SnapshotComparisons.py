@@ -1,5 +1,5 @@
 from GetSnapshots import get_snapshot
-from PrintLimitOutput import limit_output_and_compare
+from PrintLimit import limit_output_and_compare
 
 def main():
 	limits = []

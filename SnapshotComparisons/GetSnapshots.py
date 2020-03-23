@@ -42,7 +42,6 @@ class get_snapshot(object):
             private_key_content=self.config.get("key_content")
         )
 
-
     ##########################################################################
     # Initialize data key
     ##########################################################################
@@ -130,6 +129,133 @@ class get_snapshot(object):
     def get_tenancy_id(self):
         return self.config["tenancy"]
 
+        ##########################################################################
+    # Load compartments
+    ##########################################################################
+    def __load_identity_compartments(self, identity):
+
+        compartments = []
+        self.__load_print_status("Compartments")
+        start_time = time.time()
+
+        try:
+            # point to tenancy
+            tenancy = self.data[self.C_IDENTITY][self.C_IDENTITY_TENANCY]
+
+            # read all compartments to variable
+            all_compartments = []
+            try:
+                all_compartments = oci.pagination.list_call_get_all_results(
+                    identity.list_compartments,
+                    tenancy['id'],
+                    compartment_id_in_subtree=True
+                ).data
+
+            except oci.exceptions.ServiceError as e:
+                if self.__check_service_error(e.code):
+                    self.__load_print_auth_warning()
+                else:
+                    raise
+
+            ###################################################
+            # Build Compartments
+            # return nested compartment list
+            ###################################################
+            def build_compartments_nested(identity_client, cid, path):
+                try:
+                    compartment_list = [item for item in all_compartments if str(item.compartment_id) == str(cid)]
+
+                    if path != "":
+                        path = path + " / "
+
+                    for c in compartment_list:
+                        if c.lifecycle_state == oci.identity.models.Compartment.LIFECYCLE_STATE_ACTIVE:
+                            cvalue = {'id': str(c.id), 'name': str(c.name), 'path': path + str(c.name)}
+                            compartments.append(cvalue)
+                            build_compartments_nested(identity_client, c.id, cvalue['path'])
+
+                except Exception as error:
+                    raise Exception("Error in build_compartments_nested: " + str(error.args))
+
+            ###################################################
+            # Add root compartment
+            ###################################################
+            if self.flags.read_root_compartment:
+                value = {'id': tenancy['id'], 'name': tenancy['name'] + " (root)", 'path': "/ " + tenancy['name'] + " (root)"}
+                compartments.append(value)
+
+            # Build the compartments
+            build_compartments_nested(identity, tenancy['id'], "")
+
+            # sort the compartment
+            sorted_compartments = sorted(compartments, key=lambda k: k['path'])
+
+            # if not filtered by compartment return
+            if not (self.flags.filter_by_compartment or self.flags.filter_by_compartment_path or self.flags.filter_by_compartment_recursive):
+                self.data[self.C_IDENTITY][self.C_IDENTITY_COMPARTMENTS] = sorted_compartments
+                self.__load_print_cnt(len(compartments), start_time)
+                return
+
+            filtered_compart = []
+
+            # if filter by compartment, then reduce list and return new list
+            if self.flags.filter_by_compartment:
+                for x in sorted_compartments:
+                    if self.flags.filter_by_compartment in x['name'] or self.flags.filter_by_compartment in x['id']:
+                        filtered_compart.append(x)
+
+            # if filter by path compartment, then reduce list and return new list
+            if self.flags.filter_by_compartment_path:
+                for x in sorted_compartments:
+                    if self.flags.filter_by_compartment_path == x['path']:
+                        filtered_compart.append(x)            # if filter by path compartment, then reduce list and return new list
+
+            if self.flags.filter_by_compartment_recursive:
+                for x in sorted_compartments:
+                    if self.flags.filter_by_compartment_recursive in x['path']:
+                        filtered_compart.append(x)
+
+            # add to data
+            self.data[self.C_IDENTITY][self.C_IDENTITY_COMPARTMENTS] = filtered_compart
+            self.__load_print_cnt(len(filtered_compart), start_time)
+
+        except oci.exceptions.RequestException:
+            raise
+        except Exception as e:
+            raise Exception("Error in __load_identity_compartments: " + str(e.args))
+
+    ##########################################################################
+    # Load single compartment to support BOAT authentication
+    ##########################################################################
+    def __load_identity_single_compartments(self, identity):
+
+        self.__load_print_status("Compartments")
+        start_time = time.time()
+
+        compartments = []
+        try:
+
+            # read compartments to variable
+            compartment = ""
+            try:
+                compartment = identity.get_compartment(self.flags.filter_by_compartment).data
+            except oci.exceptions.ServiceError as e:
+                if self.__check_service_error(e.code):
+                    self.__load_print_auth_warning()
+                else:
+                    raise
+
+            if compartment:
+                cvalue = {'id': str(compartment.id), 'name': str(compartment.name), 'path': str(compartment.name)}
+                compartments.append(cvalue)
+
+            self.data[self.C_IDENTITY][self.C_IDENTITY_COMPARTMENTS] = compartments
+            self.__load_print_cnt(len(compartments), start_time)
+
+        except oci.exceptions.RequestException:
+            raise
+        except Exception as e:
+            raise Exception("Error in __load_identity_single_compartments: " + str(e.args))
 
     ##########################################################################
     # Load limits
