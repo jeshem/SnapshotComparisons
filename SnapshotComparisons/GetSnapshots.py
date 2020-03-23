@@ -123,125 +123,48 @@ class get_snapshot(object):
         except Exception as e:
             raise Exception("Error in load_identity_tenancy: " + str(e.args))
 
+    ##########################################################################
+    # return tenancy data
+    ##########################################################################
     def get_tenancy(self):
         return self.data[self.C_IDENTITY][self.C_IDENTITY_TENANCY]
 
+    ##########################################################################
+    # get tenancy id from file or override
+    ##########################################################################
     def get_tenancy_id(self):
         return self.config["tenancy"]
 
     ##########################################################################
-    # Load compartments
+    # return compartment data
     ##########################################################################
-    def load_identity_compartments(self, identity):
-
-        compartments = []
-        self.__load_print_status("Compartments")
-
-        try:
-            # point to tenancy
-            tenancy = self.data[self.C_IDENTITY][self.C_IDENTITY_TENANCY]
-
-            # read all compartments to variable
-            all_compartments = []
-            try:
-                all_compartments = oci.pagination.list_call_get_all_results(
-                    identity.list_compartments,
-                    tenancy['id'],
-                    compartment_id_in_subtree=True
-                ).data
-
-            except oci.exceptions.ServiceError as e:
-                if self.__check_service_error(e.code):
-                    self.__load_print_auth_warning()
-                else:
-                    raise
-
-            ###################################################
-            # Build Compartments
-            # return nested compartment list
-            ###################################################
-            def build_compartments_nested(identity_client, cid, path):
-                try:
-                    compartment_list = [item for item in all_compartments if str(item.compartment_id) == str(cid)]
-
-                    if path != "":
-                        path = path + " / "
-
-                    for c in compartment_list:
-                        if c.lifecycle_state == oci.identity.models.Compartment.LIFECYCLE_STATE_ACTIVE:
-                            cvalue = {'id': str(c.id), 'name': str(c.name), 'path': path + str(c.name)}
-                            compartments.append(cvalue)
-                            build_compartments_nested(identity_client, c.id, cvalue['path'])
-
-                except Exception as error:
-                    raise Exception("Error in build_compartments_nested: " + str(error.args))
-
-            ###################################################
-            # Add root compartment
-            ###################################################
-            root_compartment = {'id': tenancy['id'], 'name': tenancy['name'] + " (root)", 'path': "/ " + tenancy['name'] + " (root)"}
-            compartments.append(root_compartment)
-
-            # Build the compartments
-            build_compartments_nested(identity, tenancy['id'], "")
-
-            # sort the compartment
-            sorted_compartments = sorted(compartments, key=lambda k: k['path'])
-
-            # if not filtered by compartment return
-            self.data[self.C_IDENTITY][self.C_IDENTITY_COMPARTMENTS] = sorted_compartments
-
-        except oci.exceptions.RequestException:
-            raise
-        except Exception as e:
-            raise Exception("Error in __load_identity_compartments: " + str(e.args))
-
-    ##########################################################################
-    # Load single compartment to support BOAT authentication
-    ##########################################################################
-    def load_identity_single_compartments(self, identity):
-        compartments = []
-        try:
-
-            # read compartments to variable
-            compartment = ""
-            try:
-                compartment = identity.get_compartment(self.flags.filter_by_compartment).data
-            except oci.exceptions.ServiceError as e:
-                if self.__check_service_error(e.code):
-                    self.__load_print_auth_warning()
-                else:
-                    raise
-
-            if compartment:
-                cvalue = {'id': str(compartment.id), 'name': str(compartment.name), 'path': str(compartment.name)}
-                compartments.append(cvalue)
-
-            self.data[self.C_IDENTITY][self.C_IDENTITY_COMPARTMENTS] = compartments
-
-        except oci.exceptions.RequestException:
-            raise
-        except Exception as e:
-            raise Exception("Error in __load_identity_single_compartments: " + str(e.args))
+    def get_compartment(self):
+        return self.data[self.C_IDENTITY][self.C_IDENTITY_COMPARTMENTS]
 
     ##########################################################################
     # Load limits
     ##########################################################################
     def load_limits_main(self):
         limits_client = oci.limits.LimitsClient(self.config, signer=self.signer)
+        quotas_client = oci.limits.QuotasClient(self.config, signer=self.signer)
+
         tenancy = self.get_tenancy()
+        compartments = self.get_compartment()
+
         self.initialize_data_key(self.C_LIMITS, self.C_LIMITS_SERVICES)
+        self.initialize_data_key(self.C_LIMITS, self.C_LIMITS_QUOTAS)
+
         limits = self.data[self.C_LIMITS]
 
         #limits[self.C_LIMITS_SERVICES] += self.load_limits(limits_client, tenancy['id'])
 
-        self.get_limit(limits_client, tenancy['id'])
-
+        self.load_limits(limits_client, tenancy['id'])
+        limits[self.C_LIMITS_QUOTAS] += self.load_quotas(quotas_client, compartments)
     
     ##########################################################################
-    # get limits
+    # load limits
     ##########################################################################
-    def get_limit(self, limits_client, tenancy_id):        
+    def load_limits(self, limits_client, tenancy_id):        
         services = []
         try:
             services = oci.pagination.list_call_get_all_results(limits_client.list_services, tenancy_id, sort_by="name").data
@@ -312,6 +235,74 @@ class get_snapshot(object):
                 print ("Availability Domain: " + things['availability_domain'])
             print ("}\n")
 
+    ##########################################################################
+    # load_quotas
+    ##########################################################################
+    def load_quotas(self, quotas_client, compartments):
+        data = []
+        cnt = 0
+
+        try:
+            # loop on all compartments
+            for compartment in compartments:
+
+                # skip Paas compartment
+                if self.__if_managed_paas_compartment(compartment['name']):
+                    print(".", end="")
+                    continue
+
+                quotas = []
+                try:
+                    quotas = quotas_client.list_quotas(compartment['id'], lifecycle_state=oci.limits.models.QuotaSummary.LIFECYCLE_STATE_ACTIVE, sort_by="NAME").data
+                except oci.exceptions.ServiceError as e:
+                    if 'go to your home region' in str(e):
+                        print("Service can only run at home region, skipping")
+                        return data
+                    if self.__check_service_error(e.code):
+                        self.__load_print_auth_warning()
+                    else:
+                        raise
+
+                print(".", end="")
+
+                if quotas:
+
+                    # oci.limits.models.QuotaSummary
+                    for arr in quotas:
+
+                        val = {
+                            'id': str(arr.id),
+                            'name': str(arr.name),
+                            'description': str(arr.description),
+                            'statements': [],
+                            'time_created': str(arr.time_created),
+                            'compartment_name': str(compartment['name']),
+                            'compartment_id': str(compartment['id']),
+                            'region_name': str(self.config['region']),
+                            'defined_tags': [] if arr.defined_tags is None else arr.defined_tags,
+                            'freeform_tags': [] if arr.freeform_tags is None else arr.freeform_tags,
+                        }
+
+                        # read quota statements
+                        try:
+                            quota = quotas_client.get_quota(arr.id).data
+                            if quota:
+                                val['statements'] = quota.statements
+                        except oci.exceptions.ServiceError:
+                            pass
+
+                        # add the data
+                        cnt += 1
+                        data.append(val)
+            return data
+
+        except oci.exceptions.RequestException as e:
+            if self.__check_request_error(e):
+                return data
+            raise
+        except Exception as e:
+            print("error in load_quotas: " + str(e))
+            return data
 
     ##########################################################################
     # Return lists
@@ -330,4 +321,10 @@ class get_snapshot(object):
 
     def __check_service_error(self, code):
         return 'max retries exceeded' in str(code).lower() or 'auth' in str(code).lower() or 'notfound' in str(code).lower() or code == 'Forbidden' or code == 'TooManyRequests' or code == 'IncorrectState' or code == 'LimitExceeded'
+
+    ##########################################################################
+    # check if managed paas compartment
+    ##########################################################################
+    def __if_managed_paas_compartment(self, name):
+        return name == "ManagedCompartmentForPaaS"
 
