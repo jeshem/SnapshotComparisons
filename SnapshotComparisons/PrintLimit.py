@@ -144,7 +144,7 @@ class limit_output_and_compare(object):
                 PHX_dif.append(val)
         if len(last_IAD_limits)>1:
             for thing in range(len(last_PHX_limits)):
-                difference = self.IAD_limits[thing]['value'] - last_IAD_limits[thing]
+                difference = int(self.IAD_limits[thing]['value']) - int(last_IAD_limits[thing])
                 val = {'region_name': self.IAD_limits[thing]['region_name'],
                        'availability_domain': self.IAD_limits[thing]['availability_domain'],
                        'name': self.IAD_limits[thing]['limit_name'],

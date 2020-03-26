@@ -23,6 +23,7 @@ class get_snapshot(object):
         self.create_signer(self.config_file, self.config_section)
         self.load_identity_main()
         tenancy = self.data[self.C_IDENTITY][self.C_IDENTITY_TENANCY]
+        compartment = self.data[self.C_IDENTITY][self.C_IDENTITY_COMPARTMENTS]
         for region_name in tenancy['list_region_subscriptions']:
 
             # load region into data
@@ -79,13 +80,14 @@ class get_snapshot(object):
             # load tenancy and compartments
             self.load_identity_tenancy(identity, tenancy_id)
             self.load_identity_compartments(identity)
+            print("getting compartments!!!!!!!!!!!!!!!")
 
         except oci.exceptions.RequestException:
             raise
         except oci.exceptions.ServiceError:
             raise
         except Exception as e:
-            self.__print_error("__load_identity_main: ", e)
+            print("error in __load_identity_main: ", str(e))
 
 
     ##########################################################################
@@ -124,24 +126,6 @@ class get_snapshot(object):
             raise
         except Exception as e:
             raise Exception("Error in load_identity_tenancy: " + str(e.args))
-
-    ##########################################################################
-    # return tenancy data
-    ##########################################################################
-    def get_tenancy(self):
-        return self.data[self.C_IDENTITY][self.C_IDENTITY_TENANCY]
-
-    ##########################################################################
-    # get tenancy id from file or override
-    ##########################################################################
-    def get_tenancy_id(self):
-        return self.config["tenancy"]
-
-    ##########################################################################
-    # return compartment data
-    ##########################################################################
-    def get_compartment(self):
-        return self.data[self.C_IDENTITY][self.C_IDENTITY_COMPARTMENTS]
 
     ##########################################################################
     # Load limits
@@ -310,7 +294,6 @@ class get_snapshot(object):
     def load_identity_compartments(self, identity):
 
         compartments = []
-        self.__load_print_status("Compartments")
 
         try:
             # point to tenancy
@@ -372,39 +355,28 @@ class get_snapshot(object):
             raise Exception("Error in __load_identity_compartments: " + str(e.args))
 
     ##########################################################################
-    # Load single compartment to support BOAT authentication
-    ##########################################################################
-    def load_identity_single_compartments(self, identity):
-        compartments = []
-        try:
-
-            # read compartments to variable
-            compartment = ""
-            try:
-                compartment = identity.get_compartment(self.flags.filter_by_compartment).data
-            except oci.exceptions.ServiceError as e:
-                if self.__check_service_error(e.code):
-                    self.__load_print_auth_warning()
-                else:
-                    raise
-
-            if compartment:
-                cvalue = {'id': str(compartment.id), 'name': str(compartment.name), 'path': str(compartment.name)}
-                compartments.append(cvalue)
-
-            self.data[self.C_IDENTITY][self.C_IDENTITY_COMPARTMENTS] = compartments
-
-        except oci.exceptions.RequestException:
-            raise
-        except Exception as e:
-            raise Exception("Error in load_identity_single_compartments: " + str(e.args))
-
-    ##########################################################################
     # Return lists
     ##########################################################################
     def get_data_list(self):
         return self.limit_data
 
+    ##########################################################################
+    # return tenancy data
+    ##########################################################################
+    def get_tenancy(self):
+        return self.data[self.C_IDENTITY][self.C_IDENTITY_TENANCY]
+
+    ##########################################################################
+    # get tenancy id from file or override
+    ##########################################################################
+    def get_tenancy_id(self):
+        return self.config["tenancy"]
+
+    ##########################################################################
+    # return compartment data
+    ##########################################################################
+    def get_compartment(self):
+        return self.data[self.C_IDENTITY][self.C_IDENTITY_COMPARTMENTS]
 
     ##########################################################################
     # Exception catchers
