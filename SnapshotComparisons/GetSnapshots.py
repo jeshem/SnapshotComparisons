@@ -16,6 +16,7 @@ class get_snapshot(object):
     number_of_regions = 0
 
     limit_data = []
+    quota_data = []
 
     def __init__(self):
         self.config_file = oci.config.DEFAULT_LOCATION
@@ -161,7 +162,7 @@ class get_snapshot(object):
         #limits[self.C_LIMITS_SERVICES] += self.load_limits(limits_client, tenancy['id'])
 
         self.load_limits(limits_client, tenancy['id'])
-        limits[self.C_LIMITS_QUOTAS] += self.load_quotas(quotas_client, compartments)
+        self.load_quotas(quotas_client, compartments)
     
     ##########################################################################
     # load limits
@@ -228,6 +229,7 @@ class get_snapshot(object):
                         # add to array
                         self.limit_data.append(val)
         
+        """
         for things in self.limit_data:
             print ("{")
             print ("Region: " + things['region_name'])
@@ -236,13 +238,12 @@ class get_snapshot(object):
             if things['availability_domain'] != "":
                 print ("Availability Domain: " + things['availability_domain'])
             print ("}\n")
+        """
 
     ##########################################################################
     # load_quotas
     ##########################################################################
     def load_quotas(self, quotas_client, compartments):
-        data = []
-        cnt = 0
 
         try:
             # loop on all compartments
@@ -259,7 +260,7 @@ class get_snapshot(object):
                 except oci.exceptions.ServiceError as e:
                     if 'go to your home region' in str(e):
                         print("Service can only run at home region, skipping")
-                        return data
+                        return
                     if self.__check_service_error(e.code):
                         self.__load_print_auth_warning()
                     else:
@@ -294,15 +295,15 @@ class get_snapshot(object):
                             pass
 
                         # add the data
-                        cnt += 1
-                        data.append(val)
+                        self.quota_data.append(val)
 
-            self.__load_print_cnt(cnt, start_time)
-            return data
+        for things in self.quota_data:
+            print ("{")
+            print ("Name: " + things['name'])
+            print ("Statement: " + things['statement'])
+            print ("Compartment Name: " + things['compartment_name'])
+            print ("}\n")
 
-        except Exception as e:
-            print("error in load_quotas: " + str(e))
-            return data
 
     ##########################################################################
     # Load compartments
