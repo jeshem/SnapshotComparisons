@@ -13,10 +13,11 @@ class get_snapshot(object):
     C_LIMITS_QUOTAS = "quotas"
 
     data = {}
-    number_of_regions = 0
 
     limit_data = []
     quota_data = []
+
+    warning = 0
 
     def __init__(self):
         self.config_file = oci.config.DEFAULT_LOCATION
@@ -73,6 +74,15 @@ class get_snapshot(object):
         try:
             # create identity object
             identity = oci.identity.IdentityClient(self.config, signer=self.signer)
+            compartment_id = self.config["tenancy"]
+
+            # Get and set the home region for the compartment. User crud operations need
+            # to be performed in the home region.
+            response = identity.list_region_subscriptions(compartment_id)
+            for region in response.data:
+                if region.is_home_region:
+                    identity.base_client.set_region(region.region_name)
+                    break
 
             # get tenancy id from the config file
             tenancy_id = self.get_tenancy_id()
@@ -81,7 +91,6 @@ class get_snapshot(object):
             # load tenancy and compartments
             self.load_identity_tenancy(identity, tenancy_id)
             self.load_identity_compartments(identity)
-            print("getting compartments!!!!!!!!!!!!!!!")
 
         except oci.exceptions.RequestException:
             raise
@@ -106,14 +115,11 @@ class get_snapshot(object):
                 else:
                     raise
 
-            data_subs = ['eu-frankfurt-1',
-                         'us-phoenix-1',
-                         'us-ashburn-1']
-            #for es in sub_regions:
-                #data_subs = [str(es.region_name)]
-                #self.number_of_regions += 1
-            
-
+            data_subs = []
+            for es in sub_regions:
+                data_subs.append(str(es.region_name))
+                print (str(es.region_name))
+                
             data = {
                 'id': tenancy.id,
                 'name': tenancy.name,
@@ -147,6 +153,10 @@ class get_snapshot(object):
 
         self.load_limits(limits_client, tenancy['id'])
         self.load_quotas(quotas_client, compartments)
+
+        for thing in compartments:
+            print (str(thing))
+            self.test_compartment_limit(limits_client, thing['id'], tenancy['id'])
     
     ##########################################################################
     # load limits
@@ -156,6 +166,7 @@ class get_snapshot(object):
         try:
             services = oci.pagination.list_call_get_all_results(limits_client.list_services, tenancy_id, sort_by="name").data
         except oci.exceptions.ServiceError as e:
+            print (str(e))
             if self.__check_service_error(e.code):
                 self.__load_print_auth_warning("a", False)
             else:
@@ -185,8 +196,8 @@ class get_snapshot(object):
                             'availability_domain': ("" if limit.availability_domain is None else str(limit.availability_domain)),
                             'scope_type': str(limit.scope_type),
                             'value': int(limit.value),
-                            'used': "",
-                            'available': "",
+                            'used': 0,
+                            'available': 0,
                             'region_name': str(self.config['region'])
                         }
 
@@ -204,9 +215,9 @@ class get_snapshot(object):
 
                             # oci.limits.models.ResourceAvailability
                             if usage.used:
-                                val['used'] = str(usage.used)
+                                val['used'] = int(usage.used)
                             if usage.available:
-                                val['available'] = str(usage.available)
+                                val['available'] = int(usage.available)
                         except Exception:
                             pass
 
@@ -229,63 +240,65 @@ class get_snapshot(object):
     ##########################################################################
     def load_quotas(self, quotas_client, compartments):
 
-        try:
-            # loop on all compartments
-            for compartment in compartments:
+        # loop on all compartments
+        for compartment in compartments:
 
-                # skip Paas compartment
-                if self.__if_managed_paas_compartment(compartment['name']):
-                    print(".", end="")
-                    continue
-
-                quotas = []
-                try:
-                    quotas = quotas_client.list_quotas(compartment['id'], lifecycle_state=oci.limits.models.QuotaSummary.LIFECYCLE_STATE_ACTIVE, sort_by="NAME").data
-                except oci.exceptions.ServiceError as e:
-                    if 'go to your home region' in str(e):
-                        print("Service can only run at home region, skipping")
-                        return
-                    if self.__check_service_error(e.code):
-                        self.__load_print_auth_warning()
-                    else:
-                        raise
-
+            # skip Paas compartment
+            if self.__if_managed_paas_compartment(compartment['name']):
                 print(".", end="")
+                continue
 
-                if quotas:
+            quotas = []
+            try:
+                quotas = quotas_client.list_quotas(compartment['id'], lifecycle_state=oci.limits.models.QuotaSummary.LIFECYCLE_STATE_ACTIVE, sort_by="NAME").data
+            except oci.exceptions.ServiceError as e:
+                if 'go to your home region' in str(e):
+                    print("Service can only run at home region, skipping")
+                    return
+                if self.__check_service_error(e.code):
+                    self.__load_print_auth_warning()
+                else:
+                    raise
 
-                    # oci.limits.models.QuotaSummary
-                    for arr in quotas:
+            print(".", end="")
 
-                        val = {
-                            'id': str(arr.id),
-                            'name': str(arr.name),
-                            'description': str(arr.description),
-                            'statements': [],
-                            'time_created': str(arr.time_created),
-                            'compartment_name': str(compartment['name']),
-                            'compartment_id': str(compartment['id']),
-                            'region_name': str(self.config['region']),
-                            'defined_tags': [] if arr.defined_tags is None else arr.defined_tags,
-                            'freeform_tags': [] if arr.freeform_tags is None else arr.freeform_tags,
-                        }
+            if quotas:
 
-                        # read quota statements
-                        try:
-                            quota = quotas_client.get_quota(arr.id).data
-                            if quota:
-                                val['statements'] = quota.statements
-                        except oci.exceptions.ServiceError:
-                            pass
+                # oci.limits.models.QuotaSummary
+                for arr in quotas:
 
-                        # add the data
-                        self.quota_data.append(val)
+                    val = {
+                        'id': str(arr.id),
+                        'name': str(arr.name),
+                        'description': str(arr.description),
+                        'statements': [],
+                        'time_created': str(arr.time_created),
+                        'compartment_name': str(compartment['name']),
+                        'compartment_id': str(compartment['id']),
+                        'region_name': str(self.config['region']),
+                        'defined_tags': [] if arr.defined_tags is None else arr.defined_tags,
+                        'freeform_tags': [] if arr.freeform_tags is None else arr.freeform_tags,
+                    }
+
+                    # read quota statements
+                    try:
+                        quota = quotas_client.get_quota(arr.id).data
+                        if quota:
+                            val['statements'] = quota.statements
+                    except oci.exceptions.ServiceError:
+                        pass
+
+                    # add the data
+                    self.quota_data.append(val)
 
         for things in self.quota_data:
             print ("{")
             print ("Name: " + things['name'])
-            print ("Statement: " + things['statement'])
             print ("Compartment Name: " + things['compartment_name'])
+            print("Description: " + things['description'])
+            print ("Statements: ")
+            for statement in things['statements']:
+                print ("   " + str(statement))
             print ("}\n")
 
 
@@ -358,7 +371,7 @@ class get_snapshot(object):
     ##########################################################################
     # Return lists
     ##########################################################################
-    def get_data_list(self):
+    def get_limit_data(self):
         return self.limit_data
 
     ##########################################################################
@@ -395,4 +408,83 @@ class get_snapshot(object):
     ##########################################################################
     def __if_managed_paas_compartment(self, name):
         return name == "ManagedCompartmentForPaaS"
+
+
+
+
+
+
+
+
+    ##########################################################################
+    # load limits
+    ##########################################################################
+    def test_compartment_limit(self, limits_client, compartment_id, tenancy_id):        
+        services = []
+        try:
+            services = oci.pagination.list_call_get_all_results(limits_client.list_services, tenancy_id, sort_by="name").data
+        except oci.exceptions.ServiceError as e:
+            print (str(e))
+            if self.__check_service_error(e.code):
+                self.__load_print_auth_warning("a", False)
+            else:
+                raise
+        if services:
+
+                # oci.limits.models.ServiceSummary
+                for service in services:
+                    print(".", end="")
+
+                    # get the limits per service
+                    limits = []
+                    try:
+                        limits = oci.pagination.list_call_get_all_results(limits_client.list_limit_values, tenancy_id, service_name=service.name, sort_by="name").data
+                    except Exception as e:
+                        print("Unexpected error: " + str(e))
+                        raise
+
+                    # oci.limits.models.LimitValueSummary
+                    for limit in limits:
+                        val = {
+                            'name': str(service.name),
+                            'description': str(service.description),
+                            'limit_name': str(limit.name),
+                            'availability_domain': ("" if limit.availability_domain is None else str(limit.availability_domain)),
+                            'scope_type': str(limit.scope_type),
+                            'value': int(limit.value),
+                            'used': 0,
+                            'available': 0,
+                            'region_name': str(self.config['region'])
+                        }
+
+                        # if not limit, continue, don't calculate limit = 0
+                        if limit.value == 0:
+                            continue
+
+                        # get usage per limit if available
+                        try:
+                            usage = []
+                            if limit.scope_type == "AD":
+                                usage = limits_client.get_resource_availability(service.name, limit.name, compartment_id, availability_domain=limit.availability_domain).data
+                            else:
+                                usage = limits_client.get_resource_availability(service.name, limit.name, compartment_id).data
+
+                            # oci.limits.models.ResourceAvailability
+                            if usage.used:
+                                val['used'] = int(usage.used)
+                            if usage.available:
+                                val['available'] = int(usage.available)
+                        except Exception:
+                            pass
+                        
+        for things in self.limit_data:
+            if things['used'] != 0:
+                print ("{")
+                print ("Region: " + things['region_name'])
+                if things['availability_domain'] != "":
+                    print ("Availability Domain: " + things['availability_domain'])
+                print ("Limit Name: " + things['limit_name'])
+                print ("Used: " + str(things['used']))
+                print ("}\n")
+
 

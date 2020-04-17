@@ -48,24 +48,30 @@ class limit_output_and_compare(object):
         FRA_ws.title = 'FRA'
         PHX_ws = wb.create_sheet('PHX')
         IAD_ws = wb.create_sheet('IAD')
+
+        for key in range(len(self.keys)):
+            FRA_ws.cell(1, key+1).value = self.keys[key]
+            PHX_ws.cell(1, key+1).value = self.keys[key]
+            IAD_ws.cell(1, key+1).value = self.keys[key]
+
         
         for row in range(len(self.FRA_limits)):
             thing = self.FRA_limits[row]
             for col in range(len(self.keys)):
                 key = self.keys[col]
-                FRA_ws.cell(row+1, col+1).value = thing[key]
+                FRA_ws.cell(row+2, col+1).value = thing[key]
 
         for row in range(len(self.PHX_limits)):
             thing = self.PHX_limits[row]
             for col in range(len(self.keys)):
                 key = self.keys[col]
-                PHX_ws.cell(row+1, col+1).value = thing[key]
+                PHX_ws.cell(row+2, col+1).value = thing[key]
 
         for row in range(len(self.IAD_limits)):
             thing = self.IAD_limits[row]
             for col in range(len(self.keys)):
-                self.key = self.keys[col]
-                IAD_ws.cell(row+1, col+1).value = thing[key]
+                key = self.keys[col]
+                IAD_ws.cell(row+2, col+1).value = thing[key]
 
         wb.save(self.loc + "\\" + self.title + self.today + ".xlsx")
 
@@ -115,14 +121,14 @@ class limit_output_and_compare(object):
         IAD_dif = []
 
         #retrieve the limits from each region in the last limits file
-        for row in range(last_FRA_ws.max_row):
-            cell_value = last_FRA_ws.cell(row+1, 6).value
+        for row in range(last_FRA_ws.max_row-2):
+            cell_value = last_FRA_ws.cell(row+2, 6).value
             last_FRA_limits.append(cell_value)
-        for row in range(last_PHX_ws.max_row):
-            cell_value = last_PHX_ws.cell(row+1, 6).value
+        for row in range(last_PHX_ws.max_row-2):
+            cell_value = last_PHX_ws.cell(row+2, 6).value
             last_PHX_limits.append(cell_value)
-        for row in range(last_IAD_ws.max_row):
-            cell_value = last_IAD_ws.cell(row+1, 6).value
+        for row in range(last_IAD_ws.max_row-2):
+            cell_value = last_IAD_ws.cell(row+2, 6).value
             last_IAD_limits.append(cell_value)
 
         #compare limits from last time it was retrieved to the current limits
