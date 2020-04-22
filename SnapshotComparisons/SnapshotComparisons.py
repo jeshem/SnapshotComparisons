@@ -15,6 +15,8 @@ def main():
 	snapshot = get_snapshot()
 	limits = snapshot.get_limit_data()
 
+	snapshot.get_compartment_data()
+
 	compare = limit_output_and_compare(location, limits)
 	compare.print_limits()
 	compare.find_new_files(location)

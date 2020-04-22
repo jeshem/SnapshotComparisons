@@ -13,9 +13,11 @@ class get_snapshot(object):
     C_LIMITS_QUOTAS = "quotas"
 
     data = {}
+    compartment_data = {}
 
     limit_data = []
     quota_data = []
+
 
     warning = 0
 
@@ -27,7 +29,6 @@ class get_snapshot(object):
         tenancy = self.data[self.C_IDENTITY][self.C_IDENTITY_TENANCY]
         compartment = self.data[self.C_IDENTITY][self.C_IDENTITY_COMPARTMENTS]
         for region_name in tenancy['list_region_subscriptions']:
-
             # load region into data
             self.load_oci_region_data(region_name)
 
@@ -138,6 +139,8 @@ class get_snapshot(object):
     # Load limits
     ##########################################################################
     def load_limits_main(self):
+        find_compartment = 1
+
         limits_client = oci.limits.LimitsClient(self.config, signer=self.signer)
         quotas_client = oci.limits.QuotasClient(self.config, signer=self.signer)
 
@@ -155,8 +158,10 @@ class get_snapshot(object):
         self.load_quotas(quotas_client, compartments)
 
         for thing in compartments:
-            print (str(thing))
+            print(thing)
             self.test_compartment_limit(limits_client, thing['id'], tenancy['id'])
+
+
     
     ##########################################################################
     # load limits
@@ -291,15 +296,17 @@ class get_snapshot(object):
                     # add the data
                     self.quota_data.append(val)
 
-        for things in self.quota_data:
-            print ("{")
-            print ("Name: " + things['name'])
-            print ("Compartment Name: " + things['compartment_name'])
-            print("Description: " + things['description'])
-            print ("Statements: ")
-            for statement in things['statements']:
-                print ("   " + str(statement))
-            print ("}\n")
+
+                for things in self.quota_data:
+                    print ("{")
+                    print ("Name: " + things['name'])
+                    print ("Compartment Name: " + things['compartment_name'])
+                    print("Description: " + things['description'])
+                    print ("Statements: ")
+                    for statement in things['statements']:
+                        print ("   " + str(statement))
+                    print ("}\n")
+
 
 
     ##########################################################################
@@ -409,18 +416,13 @@ class get_snapshot(object):
     def __if_managed_paas_compartment(self, name):
         return name == "ManagedCompartmentForPaaS"
 
-
-
-
-
-
-
-
     ##########################################################################
-    # load limits
+    # get compartment usages, limits, etc.
     ##########################################################################
     def test_compartment_limit(self, limits_client, compartment_id, tenancy_id):        
         services = []
+        compartment_usage = []
+
         try:
             services = oci.pagination.list_call_get_all_results(limits_client.list_services, tenancy_id, sort_by="name").data
         except oci.exceptions.ServiceError as e:
@@ -476,15 +478,43 @@ class get_snapshot(object):
                                 val['available'] = int(usage.available)
                         except Exception:
                             pass
+
+                        compartment_usage.append(val)
                         
-        for things in self.limit_data:
-            if things['used'] != 0:
-                print ("{")
-                print ("Region: " + things['region_name'])
-                if things['availability_domain'] != "":
-                    print ("Availability Domain: " + things['availability_domain'])
-                print ("Limit Name: " + things['limit_name'])
-                print ("Used: " + str(things['used']))
-                print ("}\n")
+                    self.compartment_data[compartment_id] = compartment_usage
 
+    def get_compartment_data(self):
+        keep_printing = 1
+        compartments = self.get_compartment()
 
+        while keep_printing:
+            #print a bunch of blank lines to seperate outputs
+
+            #allow the user to choose which compartment they want to see via OCID or quite the program
+            choice =  input("Enter an OCID (or q to quite): ")
+            if choice == 'q':
+                keep_printing = 0
+            else:
+                try:
+                    for compartment in compartments:
+                        if choice == compartment['id']:
+                            print ("\n\n\n\n\n\n\n\n\n\n\n\n\n")
+                            print ("----------------------------------------------------")
+                            print ("You have chosen compartment: " + compartment['name'])
+                            print ("----------------------------------------------------")
+
+                    for things in self.compartment_data[choice]:
+                        if things['available'] != 0:
+                            if things['name'] == 'compute' or things['name'] == 'database':
+                                print ("{")
+                                print ("Region: " + things['region_name'])
+                                print ("Name: " + things['name'])
+                                if things['availability_domain'] != "":
+                                    print ("Availability Domain: " + things['availability_domain'])
+                                print ("Limit Name: " + things['limit_name'])
+                                print ("Used: " + str(things['used']))
+                                print ("Available: " + str(things['available']))
+                                print ("}\n")
+                except KeyError:
+                    print("That was not a valid ID. Please try again.")
+            print("\n")
