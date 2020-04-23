@@ -82,6 +82,7 @@ class get_snapshot(object):
             response = identity.list_region_subscriptions(compartment_id)
             for region in response.data:
                 if region.is_home_region:
+                    print (str(region.region_name))
                     identity.base_client.set_region(region.region_name)
                     break
 
@@ -152,14 +153,12 @@ class get_snapshot(object):
 
         limits = self.data[self.C_LIMITS]
 
-        #limits[self.C_LIMITS_SERVICES] += self.load_limits(limits_client, tenancy['id'])
-
         self.load_limits(limits_client, tenancy['id'])
         self.load_quotas(quotas_client, compartments)
 
         for thing in compartments:
             print(thing)
-            self.test_compartment_limit(limits_client, thing['id'], tenancy['id'])
+            self.load_compartment_limits(limits_client, thing['id'], tenancy['id'])
 
 
     
@@ -301,7 +300,7 @@ class get_snapshot(object):
                     print ("{")
                     print ("Name: " + things['name'])
                     print ("Compartment Name: " + things['compartment_name'])
-                    print("Description: " + things['description'])
+                    print ("Description: " + things['description'])
                     print ("Statements: ")
                     for statement in things['statements']:
                         print ("   " + str(statement))
@@ -419,7 +418,7 @@ class get_snapshot(object):
     ##########################################################################
     # get compartment usages, limits, etc.
     ##########################################################################
-    def test_compartment_limit(self, limits_client, compartment_id, tenancy_id):        
+    def load_compartment_limits(self, limits_client, compartment_id, tenancy_id):        
         services = []
         compartment_usage = []
 
@@ -515,6 +514,11 @@ class get_snapshot(object):
                                 print ("Used: " + str(things['used']))
                                 print ("Available: " + str(things['available']))
                                 print ("}\n")
+
+                    print ("----------------------------------------------------")
+                    print ("You have chosen compartment: " + compartment['name'])
+                    print ("----------------------------------------------------")
+
                 except KeyError:
                     print("That was not a valid ID. Please try again.")
             print("\n")
