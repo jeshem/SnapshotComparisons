@@ -1,4 +1,5 @@
 import oci
+import datetime
 
 class get_snapshot(object):
 
@@ -15,9 +16,12 @@ class get_snapshot(object):
     data = {}
     compartment_data = {}
 
+    services = []
+
     limit_data = []
     quota_data = []
 
+    service_list = []
 
     warning = 0
 
@@ -26,11 +30,8 @@ class get_snapshot(object):
         self.config_section = oci.config.DEFAULT_PROFILE
         self.create_signer(self.config_file, self.config_section)
         self.load_identity_main()
-        tenancy = self.data[self.C_IDENTITY][self.C_IDENTITY_TENANCY]
-        compartment = self.data[self.C_IDENTITY][self.C_IDENTITY_COMPARTMENTS]
-        for region_name in tenancy['list_region_subscriptions']:
-            # load region into data
-            self.load_oci_region_data(region_name)
+        tenancy = self.get_tenancy()
+        self.main_menu()
 
     ##########################################################################
     # Create signer
@@ -82,7 +83,6 @@ class get_snapshot(object):
             response = identity.list_region_subscriptions(compartment_id)
             for region in response.data:
                 if region.is_home_region:
-                    print (str(region.region_name))
                     identity.base_client.set_region(region.region_name)
                     break
 
@@ -94,6 +94,7 @@ class get_snapshot(object):
             self.load_identity_tenancy(identity, tenancy_id)
             self.load_identity_compartments(identity)
 
+            
         except oci.exceptions.RequestException:
             raise
         except oci.exceptions.ServiceError:
@@ -106,7 +107,6 @@ class get_snapshot(object):
     # Load tenancy
     ##########################################################################
     def load_identity_tenancy(self, identity, tenancy_id):
-
         try:
             tenancy = identity.get_tenancy(tenancy_id).data
             try:
@@ -140,104 +140,78 @@ class get_snapshot(object):
     # Load limits
     ##########################################################################
     def load_limits_main(self):
-        find_compartment = 1
 
-        limits_client = oci.limits.LimitsClient(self.config, signer=self.signer)
-        quotas_client = oci.limits.QuotasClient(self.config, signer=self.signer)
-
-        tenancy = self.get_tenancy()
-        compartments = self.get_compartment()
+        self.limits_client = oci.limits.LimitsClient(self.config, signer=self.signer)
+        self.quotas_client = oci.limits.QuotasClient(self.config, signer=self.signer)
 
         self.initialize_data_key(self.C_LIMITS, self.C_LIMITS_SERVICES)
         self.initialize_data_key(self.C_LIMITS, self.C_LIMITS_QUOTAS)
 
-        limits = self.data[self.C_LIMITS]
-
-        self.load_limits(limits_client, tenancy['id'])
-        self.load_quotas(quotas_client, compartments)
-
+        '''
         for thing in compartments:
             print(thing)
             self.load_compartment_limits(limits_client, thing['id'], tenancy['id'])
-
-
-    
+        '''
     ##########################################################################
     # load limits
     ##########################################################################
-    def load_limits(self, limits_client, tenancy_id):        
-        services = []
-        try:
-            services = oci.pagination.list_call_get_all_results(limits_client.list_services, tenancy_id, sort_by="name").data
-        except oci.exceptions.ServiceError as e:
-            print (str(e))
-            if self.__check_service_error(e.code):
-                self.__load_print_auth_warning("a", False)
-            else:
-                raise
-        if services:
-
-                # oci.limits.models.ServiceSummary
-                for service in services:
-                    print(".", end="")
-
-                    # get the limits per service
-                    limits = []
-                    try:
-                        limits = oci.pagination.list_call_get_all_results(limits_client.list_limit_values, tenancy_id, service_name=service.name, sort_by="name").data
-                    except oci.exceptions.Exception as e:
-                        if self.__check_service_error(e.code):
-                            self.__load_print_auth_warning("a", False)
-                        else:
-                            raise
-
-                    # oci.limits.models.LimitValueSummary
-                    for limit in limits:
-                        val = {
-                            'name': str(service.name),
-                            'description': str(service.description),
-                            'limit_name': str(limit.name),
-                            'availability_domain': ("" if limit.availability_domain is None else str(limit.availability_domain)),
-                            'scope_type': str(limit.scope_type),
-                            'value': int(limit.value),
-                            'used': 0,
-                            'available': 0,
-                            'region_name': str(self.config['region'])
-                        }
-
-                        # if not limit, continue, don't calculate limit = 0
-                        if limit.value == 0:
-                            continue
-
-                        # get usage per limit if available
-                        try:
-                            usage = []
-                            if limit.scope_type == "AD":
-                                usage = limits_client.get_resource_availability(service.name, limit.name, tenancy_id, availability_domain=limit.availability_domain).data
-                            else:
-                                usage = limits_client.get_resource_availability(service.name, limit.name, tenancy_id).data
-
-                            # oci.limits.models.ResourceAvailability
-                            if usage.used:
-                                val['used'] = int(usage.used)
-                            if usage.available:
-                                val['available'] = int(usage.available)
-                        except Exception:
-                            pass
-
-                        # add to array
-                        self.limit_data.append(val)
+    def load_limits(self, limits_client, tenancy_id):     
         
-        """
-        for things in self.limit_data:
-            print ("{")
-            print ("Region: " + things['region_name'])
-            print ("Limit Name: " + things['limit_name'])
-            print ("Limit: " + str(things['value']))
-            if things['availability_domain'] != "":
-                print ("Availability Domain: " + things['availability_domain'])
-            print ("}\n")
-        """
+        #If the services have not been retrieved yet, retrieve them
+        if not self.services:
+            self.build_services_list(limits_client, tenancy_id)
+
+        # oci.limits.models.ServiceSummary
+        for service in self.services:
+            print(".", end="")
+
+            # get the limits per service
+            limits = []
+            try:
+                limits = oci.pagination.list_call_get_all_results(limits_client.list_limit_values, tenancy_id, service_name=service.name, sort_by="name").data
+            except oci.exceptions.Exception as e:
+                if self.__check_service_error(e.code):
+                    self.__load_print_auth_warning("a", False)
+                else:
+                    raise
+
+            # oci.limits.models.LimitValueSummary
+            for limit in limits:
+                val = {
+                    'name': str(service.name),
+                    'description': str(service.description),
+                    'limit_name': str(limit.name),
+                    'availability_domain': ("" if limit.availability_domain is None else str(limit.availability_domain)),
+                    'scope_type': str(limit.scope_type),
+                    'value': int(limit.value),
+                    'used': 0,
+                    'available': 0,
+                    'region_name': str(self.config['region'])
+                }
+
+                # if not limit, continue, don't calculate limit = 0
+                if limit.value == 0:
+                    continue
+
+                # get usage per limit if available
+                try:
+                    usage = []
+                    if limit.scope_type == "AD":
+                        usage = limits_client.get_resource_availability(service.name, limit.name, tenancy_id, availability_domain=limit.availability_domain).data
+                    else:
+                        usage = limits_client.get_resource_availability(service.name, limit.name, tenancy_id).data
+
+                    # oci.limits.models.ResourceAvailability
+                    if usage.used:
+                        val['used'] = int(usage.used)
+                    if usage.available:
+                        val['available'] = int(usage.available)
+                except Exception:
+                    pass
+
+                # add to array
+                self.limit_data.append(val)
+        
 
     ##########################################################################
     # load_quotas
@@ -295,19 +269,6 @@ class get_snapshot(object):
                     # add the data
                     self.quota_data.append(val)
 
-
-                for things in self.quota_data:
-                    print ("{")
-                    print ("Name: " + things['name'])
-                    print ("Compartment Name: " + things['compartment_name'])
-                    print ("Description: " + things['description'])
-                    print ("Statements: ")
-                    for statement in things['statements']:
-                        print ("   " + str(statement))
-                    print ("}\n")
-
-
-
     ##########################################################################
     # Load compartments
     ##########################################################################
@@ -346,7 +307,7 @@ class get_snapshot(object):
                         path = path + " / "
 
                     for c in compartment_list:
-                        if c.lifecycle_state == oci.identity.models.Compartment.LIFECYCLE_STATE_ACTIVE:
+                        if c.lifecycle_state == oci.identity.models.Compartment.LIFECYCLE_STATE_ACTIVE:                      
                             cvalue = {'id': str(c.id), 'name': str(c.name), 'path': path + str(c.name)}
                             compartments.append(cvalue)
                             build_compartments_nested(identity_client, c.id, cvalue['path'])
@@ -399,6 +360,24 @@ class get_snapshot(object):
         return self.data[self.C_IDENTITY][self.C_IDENTITY_COMPARTMENTS]
 
     ##########################################################################
+    # Build list of services within a region
+    ##########################################################################
+    def build_services_list(self, limits_client, tenancy_id):
+        try:
+            self.services = oci.pagination.list_call_get_all_results(limits_client.list_services, tenancy_id, sort_by="name").data
+        
+            for service in self.services:
+                if str(service.name) not in self.service_list:
+                    self.service_list.append(str(service.name))
+        
+        except oci.exceptions.ServiceError as e:
+            print (str(e))
+            if self.__check_service_error(e.code):
+                self.__load_print_auth_warning("a", False)
+            else:
+                raise
+
+    ##########################################################################
     # Exception catchers
     ##########################################################################
     def __load_print_auth_warning(self, special_char="a", increase_warning=True):
@@ -418,107 +397,437 @@ class get_snapshot(object):
     ##########################################################################
     # get compartment usages, limits, etc.
     ##########################################################################
-    def load_compartment_limits(self, limits_client, compartment_id, tenancy_id):        
-        services = []
+    def load_compartment_usage(self, limits_client, compartment_id, tenancy_id):        
         compartment_usage = []
+        if not self.services:
+            self.build_services_list(limits_client, tenancy_id)
 
-        try:
-            services = oci.pagination.list_call_get_all_results(limits_client.list_services, tenancy_id, sort_by="name").data
-        except oci.exceptions.ServiceError as e:
-            print (str(e))
-            if self.__check_service_error(e.code):
-                self.__load_print_auth_warning("a", False)
-            else:
+        # oci.limits.models.ServiceSummary
+        for service in self.services:
+            # get the limits per service
+            limits = []
+            try:
+                limits = oci.pagination.list_call_get_all_results(limits_client.list_limit_values, tenancy_id, service_name=service.name, sort_by="name").data
+            except Exception as e:
+                print("Unexpected error: " + str(e))
                 raise
-        if services:
 
-                # oci.limits.models.ServiceSummary
-                for service in services:
-                    print(".", end="")
+            # oci.limits.models.LimitValueSummary
+            for limit in limits:
+                val = {
+                    'name': str(service.name),
+                    'description': str(service.description),
+                    'limit_name': str(limit.name),
+                    'availability_domain': ("" if limit.availability_domain is None else str(limit.availability_domain)),
+                    'scope_type': str(limit.scope_type),
+                    'value': int(limit.value),
+                    'used': 0,
+                    'available': 0,
+                    'region_name': str(self.config['region'])
+                }
 
-                    # get the limits per service
-                    limits = []
-                    try:
-                        limits = oci.pagination.list_call_get_all_results(limits_client.list_limit_values, tenancy_id, service_name=service.name, sort_by="name").data
-                    except Exception as e:
-                        print("Unexpected error: " + str(e))
-                        raise
+                # if not limit, continue, don't calculate limit = 0
+                if limit.value == 0:
+                    continue
 
-                    # oci.limits.models.LimitValueSummary
-                    for limit in limits:
-                        val = {
-                            'name': str(service.name),
-                            'description': str(service.description),
-                            'limit_name': str(limit.name),
-                            'availability_domain': ("" if limit.availability_domain is None else str(limit.availability_domain)),
-                            'scope_type': str(limit.scope_type),
-                            'value': int(limit.value),
-                            'used': 0,
-                            'available': 0,
-                            'region_name': str(self.config['region'])
-                        }
+                # get usage per limit if available
+                try:
+                    usage = []
+                    if limit.scope_type == "AD":
+                        usage = limits_client.get_resource_availability(service.name, limit.name, compartment_id, availability_domain=limit.availability_domain).data
+                    else:
+                        usage = limits_client.get_resource_availability(service.name, limit.name, compartment_id).data
 
-                        # if not limit, continue, don't calculate limit = 0
-                        if limit.value == 0:
-                            continue
+                    # oci.limits.models.ResourceAvailability
+                    if usage.used:
+                        val['used'] = int(usage.used)
+                    if usage.available:
+                        val['available'] = int(usage.available)
+                except Exception:
+                    pass
 
-                        # get usage per limit if available
-                        try:
-                            usage = []
-                            if limit.scope_type == "AD":
-                                usage = limits_client.get_resource_availability(service.name, limit.name, compartment_id, availability_domain=limit.availability_domain).data
-                            else:
-                                usage = limits_client.get_resource_availability(service.name, limit.name, compartment_id).data
-
-                            # oci.limits.models.ResourceAvailability
-                            if usage.used:
-                                val['used'] = int(usage.used)
-                            if usage.available:
-                                val['available'] = int(usage.available)
-                        except Exception:
-                            pass
-
-                        compartment_usage.append(val)
+                compartment_usage.append(val)
+        return compartment_usage
                         
-                    self.compartment_data[compartment_id] = compartment_usage
-
-    def get_compartment_data(self):
+    '''    
+    def print_compartment_data(self):
         keep_printing = 1
         compartments = self.get_compartment()
 
         while keep_printing:
-            #print a bunch of blank lines to seperate outputs
+            regions = ""
+            stay_compartment = 1
 
             #allow the user to choose which compartment they want to see via OCID or quite the program
-            choice =  input("Enter an OCID (or q to quite): ")
+            choice =  input("Enter an OCID (quota to show quota, q to quite): ")
             if choice == 'q':
                 keep_printing = 0
+
+            elif choice =='quota':
+                for things in self.quota_data:
+                    print ("{")
+                    print ("Name: " + things['name'])
+                    print ("Compartment Name: " + things['compartment_name'])
+                    print ("Description: " + things['description'])
+                    print ("Statements: ")
+                    for statement in things['statements']:
+                        print ("   " + str(statement))
+                    print ("}\n")
+
             else:
                 try:
+                    selected_compartment = self.compartment_data[choice]
+
                     for compartment in compartments:
                         if choice == compartment['id']:
                             print ("\n\n\n\n\n\n\n\n\n\n\n\n\n")
                             print ("----------------------------------------------------")
                             print ("You have chosen compartment: " + compartment['name'])
                             print ("----------------------------------------------------")
+                            break
 
-                    for things in self.compartment_data[choice]:
-                        if things['available'] != 0:
-                            if things['name'] == 'compute' or things['name'] == 'database':
-                                print ("{")
-                                print ("Region: " + things['region_name'])
-                                print ("Name: " + things['name'])
-                                if things['availability_domain'] != "":
-                                    print ("Availability Domain: " + things['availability_domain'])
-                                print ("Limit Name: " + things['limit_name'])
-                                print ("Used: " + str(things['used']))
-                                print ("Available: " + str(things['available']))
-                                print ("}\n")
+                    while stay_compartment:
+                        region_name = ''
 
-                    print ("----------------------------------------------------")
-                    print ("You have chosen compartment: " + compartment['name'])
-                    print ("----------------------------------------------------")
+                        service = input("What service would you like to see (help for list of valid options): ")
+
+                        if service == 'help':
+                            print ("Valid options:")
+                            for service in self.service_list:
+                                print(service)
+                            print ("all to show all services")
+                            print ("q to choose another compartment\n")
+
+                        elif service == 'all':
+                            for things in self.compartment_data[choice]:
+                                if things['used'] != 0:
+                                    if things['region_name'] != region_name:
+                                            region_name = things['region_name']
+                                            print ("{  Region: " + region_name + "  }")
+                                    print (
+                                        (things['name'] + " ").ljust(20) +
+                                        (things['limit_name']).ljust(37) +
+                                        ("Used= " + str(things['used'])).ljust(10) + 
+                                        ("Available= " + str(things['available'])).ljust(20) +
+                                        (things['availability_domain']).ljust(7)
+                                        )
+                                       
+                            print("\n")
+
+                        elif service == 'q':
+                            stay_compartment = 0
+                            break
+
+                        else:                            
+                            printed = 0
+
+                            for things in self.compartment_data[choice]:
+                                if things['used'] != 0:
+                                    if things['name'] == service:
+                                        if things['region_name'] != region_name:
+                                            region_name = things['region_name']
+                                            print ("{  Region: " + region_name + "  }")
+
+                                        print (
+                                            (things['name'] + " ").ljust(20) +
+                                            (things['limit_name']).ljust(37) +
+                                            ("Used= " + str(things['used'])).ljust(10) + 
+                                            ("Available= " + str(things['available'])).ljust(15) +
+                                            (things['availability_domain']).ljust(7)
+                                            )
+                                        printed = 1
+                            print("\n")
+
+                            if printed == 0:
+                                print ("This compartment does not have any " + service + " services running.\n")
 
                 except KeyError:
-                    print("That was not a valid ID. Please try again.")
+                    print("That was not a valid compartment ID. Please try again.")
             print("\n")
+    '''
+
+    def main_menu(self):
+        keep_running = 1
+        
+        tenancy = self.get_tenancy()
+        compartments = self.get_compartment()
+        all_compartments_usage = {}
+
+        while keep_running:
+            print ("\n")
+            choice = input("Please choose an option:\n" +
+                          "1. Tenancy Limit\n" +
+                          "2. Quota Policies\n" +
+                          "3. Compartment Usage\n" + 
+                          "4. Quit\n" + 
+                          ">"
+                           )
+            print ("\n")
+
+            ########################################################################################
+            #If user picks 1, show tenancy limit
+            if choice == '1':
+                current_region = ''
+                print("Start getting limits")
+                then = datetime.datetime.now()
+
+                for region_name in tenancy['list_region_subscriptions']:
+                    # load region into data
+                    self.load_oci_region_data(region_name)
+                    #Get tenancy limits
+                    self.load_limits(self.limits_client, tenancy['id'])
+               
+                now = datetime.datetime.now()
+                print("Load limits time: " + str((now-then).total_seconds()) + " sec")   
+
+
+                for things in self.limit_data:
+                    if things['value'] != 0:
+                        if things['region_name'] != current_region:
+                            current_region = things['region_name']
+                            print ("\n")
+                            print ("========================================")
+                            print ("{  Region: " + current_region + "  }")
+                            print ("========================================")
+
+                        print (
+                            (things['name'] + " ").ljust(20) +
+                            (things['limit_name']).ljust(37) +
+                            ("Limit= " + str(things['value'])).ljust(10) +
+                            ("Used= " + str(things['used'])).ljust(10) + 
+                            ("Available= " + str(things['available'])).ljust(15) +
+                            (things['availability_domain']).ljust(7)
+                            )
+            ########################################################################################
+
+            ########################################################################################
+            #If user picks 2, show quota
+            elif choice == '2':
+                print("Start getting quota policies")
+                then = datetime.datetime.now()
+
+                for region_name in tenancy['list_region_subscriptions']:
+                    # load region into data
+                    self.load_oci_region_data(region_name)
+                    
+                    #Get quota policies
+                    self.load_quotas(self.quotas_client, compartments)
+                
+                now = datetime.datetime.now()
+                print("Load quotas time: " + str((now-then).total_seconds()) + " sec")
+
+                for policy in self.quota_data:
+                    print ("Name: " + policy['name'] +
+                           "Compartment Name: " + policy['compartment_name'] +
+                           "Description : " + policy['description'] + 
+                           "Statements : ")
+                    for statement in policy['statements']:
+                        print ("    " + str(statement))
+            ########################################################################################
+
+            ########################################################################################
+            #If user picks 3, ask which compartment or all compartments
+            elif choice == '3':
+                stay_here = 1
+
+                while stay_here:
+                    choice = input("1. Usage of all compartments\n" +
+                                   "2. Usage of a conpartment\n" +
+                                   "3. Go back\n"
+                                   ">"
+                                   )
+                    if choice == '1':
+                        stay_compartment = 1
+                        if not all_compartments_usage:
+                            for region_name in tenancy['list_region_subscriptions']:
+                                # load region into data
+                                self.load_oci_region_data(region_name)
+                                for compartment in compartments:
+                                    print(compartment)
+                                    compartment_usage = self.load_compartment_usage(self.limits_client, compartment['id'], tenancy['id'])
+                                    if compartment['name'] in all_compartments_usage:
+                                        all_compartments_usage[compartment['name']].append(compartment_usage)
+                                    else:
+                                        all_compartments_usage[compartment['name']] = compartment_usage
+
+                        while stay_compartment:
+                            service = input("Enter which service you would like to see (help to see valid commands): ")
+                        
+                            if service == 'help':
+                                    print ("Valid options:")
+                                    for service in self.service_list:
+                                        print(service)
+                                    print ("all to show all services")
+                                    print ("q to go back\n")
+
+                            elif service == 'all':
+                                current_region = ''
+                                for compartment in compartments:
+                                    print (compartment['name'])
+                                    for each_usage in all_compartments_usage[compartment['name']]:
+                                        for things in each_usage:
+                                            if things['used'] != 0:
+                                                print (things)
+                                                if things['region_name'] != current_region:
+                                                    current_region = things['region_name']
+                                                    print ("\n")
+                                                    print ("========================================")
+                                                    print ("{  Region: " + current_region + "  }")
+                                                    print ("========================================")
+                                                print (
+                                                    (things['name'] + " ").ljust(20) +
+                                                    (things['limit_name']).ljust(37) +
+                                                    ("Used= " + str(things['used'])).ljust(10) + 
+                                                    ("Available= " + str(things['available'])).ljust(20) +
+                                                    (things['availability_domain']).ljust(7)
+                                                    )
+                                       
+                                    print("\n")
+
+                            elif service == 'q':
+                                stay_compartment = 0
+                                break
+
+                            else:          
+                                printed = 0
+                                current_region = ''
+
+                                for compartment in compartments:
+                                    print (compartment['name'])
+                                    for each_usage in all_compartments_usage[compartment['name']]:
+                                        for things in each_usage:
+                                            if things['used'] != 0:
+                                                if things['name'] == service:
+                                                    if things['region_name'] != region_name:
+                                                        current_region = things['region_name']
+                                                        print ("\n")
+                                                        print ("========================================")
+                                                        print ("{  Region: " + current_region + "  }")
+                                                        print ("========================================")
+
+                                                    print (
+                                                        (things['name'] + " ").ljust(20) +
+                                                        (things['limit_name']).ljust(37) +
+                                                        ("Used= " + str(things['used'])).ljust(10) + 
+                                                        ("Available= " + str(things['available'])).ljust(15) +
+                                                        (things['availability_domain']).ljust(7)
+                                                        )
+                                                    printed = 1
+                                print("\n")
+
+                                if printed == 0:
+                                    print ("This compartment does not have any " + service + " services running.\n")
+
+                        pass
+                    if choice == '2':
+                        stay_compartment = 1
+                        comp_name = ''
+                        comp_id = ''
+                        chosen_comp = input("Enter a compartment's OCID or name: ")
+                        total_comp_usage = []
+
+                        for compartment in compartments:
+                            if chosen_comp == compartment['id']:
+                                comp_id = chosen_comp
+                                comp_name = compartment['name']
+                                break
+                            elif chosen_comp == compartment['name']:
+                                comp_name = chosen_comp
+                                comp_id = compartment['id']
+                                break
+
+                        if comp_id == '':
+                            print ("Could not find compartment " + chosen_comp)
+                            break
+
+                        for region_name in tenancy['list_region_subscriptions']:
+                            # load region into data
+                            self.load_oci_region_data(region_name)
+                            print(compartment)
+                            compartment_usage = self.load_compartment_usage(self.limits_client, comp_id, tenancy['id'])
+                            total_comp_usage.append(compartment_usage)
+
+                        while stay_compartment:
+                            service = input("Enter which service you would like to see (help to see valid commands): ")
+                        
+                            if service == 'help':
+                                    print ("Valid options:")
+                                    for services in self.service_list:
+                                        print(services)
+                                    print ("all to show all services")
+                                    print ("q to go back\n")
+
+                            #If user chooses 'all', list all usages in compartment that is >0
+                            elif service == 'all':
+                                current_region = ''
+                                print (comp_name)
+                                for each_usage in total_comp_usage:
+                                    for things in each_usage:
+                                        if things['used'] != 0:
+                                            if things['region_name'] != current_region:
+                                                current_region = things['region_name']
+                                                print ("\n")
+                                                print ("========================================")
+                                                print ("{  Region: " + current_region + "  }")
+                                                print ("========================================")
+
+                                            print (
+                                                (things['name'] + " ").ljust(20) +
+                                                (things['limit_name']).ljust(37) +
+                                                ("Used= " + str(things['used'])).ljust(10) + 
+                                                ("Available= " + str(things['available'])).ljust(20) +
+                                                (things['availability_domain']).ljust(7)
+                                                )
+                                print("\n")
+
+                            elif service == 'q':
+                                stay_compartment = 0
+                                break
+
+                            else:          
+                                printed = 0
+                                current_region = ''
+                                print (compartment['name'])
+                                for each_usage in total_comp_usage:
+                                    for things in each_usage:
+                                        if things['used'] != 0:
+                                            if things['name'] == service:
+                                                if things['region_name'] != region_name:
+                                                    current_region = things['region_name']
+                                                    print ("\n")
+                                                    print ("========================================")
+                                                    print ("{  Region: " + current_region + "  }")
+                                                    print ("========================================")
+
+                                                print (
+                                                    (things['name'] + " ").ljust(20) +
+                                                    (things['limit_name']).ljust(37) +
+                                                    ("Used= " + str(things['used'])).ljust(10) + 
+                                                    ("Available= " + str(things['available'])).ljust(15) +
+                                                    (things['availability_domain']).ljust(7)
+                                                    )
+                                                printed = 1
+                                print("\n")
+
+                                if printed == 0:
+                                    print ("This compartment does not have any " + service + " services running.\n")
+                        pass
+
+                    if choice == '3':
+                        stay_here = 0
+
+                    else:
+                        print("That was not a valid option.")
+            ########################################################################################
+
+            ########################################################################################
+            #If user picks 4, quit
+            elif choice == '4':
+                keep_running = 0
+            ########################################################################################
+
+            ########################################################################################
+            #If anything else, print error message and return to top
+            else:
+                print ("That was not a valid option. Please try again.")
+            ########################################################################################

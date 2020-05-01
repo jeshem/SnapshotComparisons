@@ -1,12 +1,6 @@
 from GetSnapshots import get_snapshot
 from PrintLimit import limit_output_and_compare
 
-'''
-we have usage on a regional level
-WE NEED IT ON A COMPARTMENT LEVEL
-Get quota on AD level
-'''
-
 def main():
 	limits = []
 	
