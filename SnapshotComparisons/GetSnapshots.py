@@ -446,105 +446,9 @@ class get_snapshot(object):
                 except Exception:
                     pass
 
+                print(val)
                 compartment_usage.append(val)
         return compartment_usage
-                        
-    '''    
-    def print_compartment_data(self):
-        keep_printing = 1
-        compartments = self.get_compartment()
-
-        while keep_printing:
-            regions = ""
-            stay_compartment = 1
-
-            #allow the user to choose which compartment they want to see via OCID or quite the program
-            choice =  input("Enter an OCID (quota to show quota, q to quite): ")
-            if choice == 'q':
-                keep_printing = 0
-
-            elif choice =='quota':
-                for things in self.quota_data:
-                    print ("{")
-                    print ("Name: " + things['name'])
-                    print ("Compartment Name: " + things['compartment_name'])
-                    print ("Description: " + things['description'])
-                    print ("Statements: ")
-                    for statement in things['statements']:
-                        print ("   " + str(statement))
-                    print ("}\n")
-
-            else:
-                try:
-                    selected_compartment = self.compartment_data[choice]
-
-                    for compartment in compartments:
-                        if choice == compartment['id']:
-                            print ("\n\n\n\n\n\n\n\n\n\n\n\n\n")
-                            print ("----------------------------------------------------")
-                            print ("You have chosen compartment: " + compartment['name'])
-                            print ("----------------------------------------------------")
-                            break
-
-                    while stay_compartment:
-                        region_name = ''
-
-                        service = input("What service would you like to see (help for list of valid options): ")
-
-                        if service == 'help':
-                            print ("Valid options:")
-                            for service in self.service_list:
-                                print(service)
-                            print ("all to show all services")
-                            print ("q to choose another compartment\n")
-
-                        elif service == 'all':
-                            for things in self.compartment_data[choice]:
-                                if things['used'] != 0:
-                                    if things['region_name'] != region_name:
-                                            region_name = things['region_name']
-                                            print ("{  Region: " + region_name + "  }")
-                                    print (
-                                        (things['name'] + " ").ljust(20) +
-                                        (things['limit_name']).ljust(37) +
-                                        ("Used= " + str(things['used'])).ljust(10) + 
-                                        ("Available= " + str(things['available'])).ljust(20) +
-                                        (things['availability_domain']).ljust(7)
-                                        )
-                                       
-                            print("\n")
-
-                        elif service == 'q':
-                            stay_compartment = 0
-                            break
-
-                        else:                            
-                            printed = 0
-
-                            for things in self.compartment_data[choice]:
-                                if things['used'] != 0:
-                                    if things['name'] == service:
-                                        if things['region_name'] != region_name:
-                                            region_name = things['region_name']
-                                            print ("{  Region: " + region_name + "  }")
-
-                                        print (
-                                            (things['name'] + " ").ljust(20) +
-                                            (things['limit_name']).ljust(37) +
-                                            ("Used= " + str(things['used'])).ljust(10) + 
-                                            ("Available= " + str(things['available'])).ljust(15) +
-                                            (things['availability_domain']).ljust(7)
-                                            )
-                                        printed = 1
-                            print("\n")
-
-                            if printed == 0:
-                                print ("This compartment does not have any " + service + " services running.\n")
-
-                except KeyError:
-                    print("That was not a valid compartment ID. Please try again.")
-            print("\n")
-    '''
 
     def main_menu(self):
         keep_running = 1
@@ -617,9 +521,9 @@ class get_snapshot(object):
                 print("Load quotas time: " + str((now-then).total_seconds()) + " sec")
 
                 for policy in self.quota_data:
-                    print ("Name: " + policy['name'] +
-                           "Compartment Name: " + policy['compartment_name'] +
-                           "Description : " + policy['description'] + 
+                    print ("Name: " + policy['name'] + "\n" +
+                           "Compartment Name: " + policy['compartment_name'] + "\n" +
+                           "Description : " + policy['description'] +  "\n" +
                            "Statements : ")
                     for statement in policy['statements']:
                         print ("    " + str(statement))
@@ -643,12 +547,12 @@ class get_snapshot(object):
                                 # load region into data
                                 self.load_oci_region_data(region_name)
                                 for compartment in compartments:
-                                    print(compartment)
-                                    compartment_usage = self.load_compartment_usage(self.limits_client, compartment['id'], tenancy['id'])
-                                    if compartment['name'] in all_compartments_usage:
-                                        all_compartments_usage[compartment['name']].append(compartment_usage)
-                                    else:
-                                        all_compartments_usage[compartment['name']] = compartment_usage
+                                        print (compartment)
+                                        compartment_usage = self.load_compartment_usage(self.limits_client, compartment['id'], tenancy['id'])
+                                        if compartment['name'] in all_compartments_usage:
+                                            all_compartments_usage[compartment['name']] = all_compartments_usage[compartment['name']] + compartment_usage
+                                        else:
+                                            all_compartments_usage[compartment['name']] = compartment_usage
 
                         while stay_compartment:
                             service = input("Enter which service you would like to see (help to see valid commands): ")
@@ -663,25 +567,31 @@ class get_snapshot(object):
                             elif service == 'all':
                                 current_region = ''
                                 for compartment in compartments:
-                                    print (compartment['name'])
-                                    for each_usage in all_compartments_usage[compartment['name']]:
-                                        for things in each_usage:
-                                            if things['used'] != 0:
+                                    print ("========================================")
+                                    print ("Compartment: " + compartment['name'])
+                                    print ("========================================")
+                                    for things in all_compartments_usage[compartment['name']]:
+                                            try:
+                                                if things['used'] != 0:
+                                                    if things['region_name'] != current_region:
+                                                        current_region = things['region_name']
+                                                        print ("========================================")
+                                                        print ("{  Region: " + current_region + "  }")
+                                                        print ("========================================")
+                                                    print (
+                                                        (things['name'] + " ").ljust(20) +
+                                                        (things['limit_name']).ljust(37) +
+                                                        ("Used= " + str(things['used'])).ljust(10) + 
+                                                        ("Available= " + str(things['available'])).ljust(20) +
+                                                        (things['availability_domain']).ljust(7)
+                                                        )
+                                            except Exception as e:
+                                                print ("\n")
+                                                print("Crashed here: ")
                                                 print (things)
-                                                if things['region_name'] != current_region:
-                                                    current_region = things['region_name']
-                                                    print ("\n")
-                                                    print ("========================================")
-                                                    print ("{  Region: " + current_region + "  }")
-                                                    print ("========================================")
-                                                print (
-                                                    (things['name'] + " ").ljust(20) +
-                                                    (things['limit_name']).ljust(37) +
-                                                    ("Used= " + str(things['used'])).ljust(10) + 
-                                                    ("Available= " + str(things['available'])).ljust(20) +
-                                                    (things['availability_domain']).ljust(7)
-                                                    )
-                                       
+                                                print (e)
+                                                raise
+
                                     print("\n")
 
                             elif service == 'q':
@@ -693,14 +603,14 @@ class get_snapshot(object):
                                 current_region = ''
 
                                 for compartment in compartments:
-                                    print (compartment['name'])
-                                    for each_usage in all_compartments_usage[compartment['name']]:
-                                        for things in each_usage:
+                                    print ("========================================")
+                                    print ("Compartment: " + compartment['name'])
+                                    print ("========================================")
+                                    for things in all_compartments_usage[compartment['name']]:
                                             if things['used'] != 0:
                                                 if things['name'] == service:
                                                     if things['region_name'] != region_name:
                                                         current_region = things['region_name']
-                                                        print ("\n")
                                                         print ("========================================")
                                                         print ("{  Region: " + current_region + "  }")
                                                         print ("========================================")
@@ -740,12 +650,19 @@ class get_snapshot(object):
                             print ("Could not find compartment " + chosen_comp)
                             break
 
+                        print("Start getting " + comp_name + " usages")
+                        then = datetime.datetime.now()
+
                         for region_name in tenancy['list_region_subscriptions']:
                             # load region into data
                             self.load_oci_region_data(region_name)
                             print(compartment)
+                            # get compartment's usage
                             compartment_usage = self.load_compartment_usage(self.limits_client, comp_id, tenancy['id'])
                             total_comp_usage.append(compartment_usage)
+
+                        now = datetime.datetime.now()
+                        print("Load " + comp_name + " usage time: " + str((now-then).total_seconds()) + " sec")
 
                         while stay_compartment:
                             service = input("Enter which service you would like to see (help to see valid commands): ")
@@ -784,7 +701,7 @@ class get_snapshot(object):
                                 stay_compartment = 0
                                 break
 
-                            else:          
+                            elif service in self.service_list:          
                                 printed = 0
                                 current_region = ''
                                 print (compartment['name'])
@@ -811,6 +728,8 @@ class get_snapshot(object):
 
                                 if printed == 0:
                                     print ("This compartment does not have any " + service + " services running.\n")
+                            else:
+                                print (service + " is not a valid service. Type help to see all valid services.")
                         pass
 
                     if choice == '3':
