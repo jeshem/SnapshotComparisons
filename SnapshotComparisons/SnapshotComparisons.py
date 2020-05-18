@@ -9,11 +9,10 @@ def main():
 	snapshot = get_snapshot()
 	limits = snapshot.get_limit_data()
 
-	compare = limit_output_and_compare(location, limits)
-	compare.print_limits()
-	compare.find_new_files(location)
-
-	wait = input("PRESS ENTER TO CONTINUE.")
+	if limits:
+		compare = limit_output_and_compare(location, limits)
+		compare.print_limits()
+		#compare.find_new_files(location)
 
 
 if __name__ == "__main__":

@@ -26,12 +26,26 @@ class get_snapshot(object):
     warning = 0
 
     def __init__(self):
+        #path to your config file
         self.config_file = oci.config.DEFAULT_LOCATION
-        self.config_section = oci.config.DEFAULT_PROFILE
+
+        #name of the profile you want to use in your config file
+        #self.config_section = oci.config.DEFAULT_PROFILE
+        self.config_section = "TEST"
+
         self.create_signer(self.config_file, self.config_section)
         self.load_identity_main()
         tenancy = self.get_tenancy()
         self.main_menu()
+
+
+        if not self.limit_data:
+            print("Retrieving limit data")
+            for region_name in tenancy['list_region_subscriptions']:
+                    # load region into data
+                    self.load_oci_region_data(region_name)
+                    #Get tenancy limits
+                    self.load_limits(self.limits_client, tenancy['id'])
 
     ##########################################################################
     # Create signer
@@ -76,15 +90,6 @@ class get_snapshot(object):
         try:
             # create identity object
             identity = oci.identity.IdentityClient(self.config, signer=self.signer)
-            compartment_id = self.config["tenancy"]
-
-            # Get and set the home region for the compartment. User crud operations need
-            # to be performed in the home region.
-            response = identity.list_region_subscriptions(compartment_id)
-            for region in response.data:
-                if region.is_home_region:
-                    identity.base_client.set_region(region.region_name)
-                    break
 
             # get tenancy id from the config file
             tenancy_id = self.get_tenancy_id()
@@ -101,6 +106,7 @@ class get_snapshot(object):
             raise
         except Exception as e:
             print("error in __load_identity_main: ", str(e))
+            raise
 
 
     ##########################################################################
@@ -118,9 +124,10 @@ class get_snapshot(object):
                     raise
 
             data_subs = []
+            print ("Regions subscribed by oraclenetsuite tenanacy: ")
             for es in sub_regions:
                 data_subs.append(str(es.region_name))
-                print (str(es.region_name))
+                print ("   " + str(es.region_name))
                 
             data = {
                 'id': tenancy.id,
@@ -135,6 +142,7 @@ class get_snapshot(object):
             raise
         except Exception as e:
             raise Exception("Error in load_identity_tenancy: " + str(e.args))
+            raise
 
     ##########################################################################
     # Load limits
@@ -147,11 +155,6 @@ class get_snapshot(object):
         self.initialize_data_key(self.C_LIMITS, self.C_LIMITS_SERVICES)
         self.initialize_data_key(self.C_LIMITS, self.C_LIMITS_QUOTAS)
 
-        '''
-        for thing in compartments:
-            print(thing)
-            self.load_compartment_limits(limits_client, thing['id'], tenancy['id'])
-        '''
     ##########################################################################
     # load limits
     ##########################################################################
@@ -169,7 +172,7 @@ class get_snapshot(object):
             limits = []
             try:
                 limits = oci.pagination.list_call_get_all_results(limits_client.list_limit_values, tenancy_id, service_name=service.name, sort_by="name").data
-            except oci.exceptions.Exception as e:
+            except Exception as e:
                 if self.__check_service_error(e.code):
                     self.__load_print_auth_warning("a", False)
                 else:
@@ -207,8 +210,16 @@ class get_snapshot(object):
                     if usage.available:
                         val['available'] = int(usage.available)
                 except Exception:
-                    pass
+                    raise
 
+                print (
+                    (val['name'] + " ").ljust(20) +
+                    (val['limit_name']).ljust(37) +
+                    ("Limit= " + str(val['value'])).ljust(10) +
+                    ("Used= " + str(val['used'])).ljust(10) + 
+                    ("Available= " + str(val['available'])).ljust(15) +
+                    (val['availability_domain']).ljust(7)
+                    )
                 # add to array
                 self.limit_data.append(val)
         
@@ -217,6 +228,7 @@ class get_snapshot(object):
     # load_quotas
     ##########################################################################
     def load_quotas(self, quotas_client, compartments):
+        quota_data = []
 
         # loop on all compartments
         for compartment in compartments:
@@ -231,7 +243,7 @@ class get_snapshot(object):
                 quotas = quotas_client.list_quotas(compartment['id'], lifecycle_state=oci.limits.models.QuotaSummary.LIFECYCLE_STATE_ACTIVE, sort_by="NAME").data
             except oci.exceptions.ServiceError as e:
                 if 'go to your home region' in str(e):
-                    print("Service can only run at home region, skipping")
+                    #print("Service can only run at home region, skipping")
                     return
                 if self.__check_service_error(e.code):
                     self.__load_print_auth_warning()
@@ -260,6 +272,7 @@ class get_snapshot(object):
 
                     # read quota statements
                     try:
+                        print(arr.id)
                         quota = quotas_client.get_quota(arr.id).data
                         if quota:
                             val['statements'] = quota.statements
@@ -268,6 +281,7 @@ class get_snapshot(object):
 
                     # add the data
                     self.quota_data.append(val)
+
 
     ##########################################################################
     # Load compartments
@@ -446,7 +460,14 @@ class get_snapshot(object):
                 except Exception:
                     pass
 
-                print(val)
+                print (
+                    (val['name'] + " ").ljust(20) +
+                    (val['limit_name']).ljust(37) +
+                    ("Limit= " + str(val['value'])).ljust(10) +
+                    ("Used= " + str(val['used'])).ljust(10) + 
+                    ("Available= " + str(val['available'])).ljust(15) +
+                    (val['availability_domain']).ljust(7)
+                    )
                 compartment_usage.append(val)
         return compartment_usage
 
@@ -468,18 +489,18 @@ class get_snapshot(object):
                            )
             print ("\n")
 
-            ########################################################################################
             #If user picks 1, show tenancy limit
             if choice == '1':
                 current_region = ''
                 print("Start getting limits")
                 then = datetime.datetime.now()
 
-                for region_name in tenancy['list_region_subscriptions']:
-                    # load region into data
-                    self.load_oci_region_data(region_name)
-                    #Get tenancy limits
-                    self.load_limits(self.limits_client, tenancy['id'])
+                if not self.limit_data:
+                    for region_name in tenancy['list_region_subscriptions']:
+                        # load region into data
+                        self.load_oci_region_data(region_name)
+                        #Get tenancy limits
+                        self.load_limits(self.limits_client, tenancy['id'])
                
                 now = datetime.datetime.now()
                 print("Load limits time: " + str((now-then).total_seconds()) + " sec")   
@@ -490,9 +511,7 @@ class get_snapshot(object):
                         if things['region_name'] != current_region:
                             current_region = things['region_name']
                             print ("\n")
-                            print ("========================================")
-                            print ("{  Region: " + current_region + "  }")
-                            print ("========================================")
+                            print ("[Region: " + current_region + "]")
 
                         print (
                             (things['name'] + " ").ljust(20) +
@@ -502,20 +521,19 @@ class get_snapshot(object):
                             ("Available= " + str(things['available'])).ljust(15) +
                             (things['availability_domain']).ljust(7)
                             )
-            ########################################################################################
 
-            ########################################################################################
             #If user picks 2, show quota
             elif choice == '2':
                 print("Start getting quota policies")
                 then = datetime.datetime.now()
 
-                for region_name in tenancy['list_region_subscriptions']:
-                    # load region into data
-                    self.load_oci_region_data(region_name)
+                if not self.quota_data:
+                    for region_name in tenancy['list_region_subscriptions']:
+                        # load region into data
+                        self.load_oci_region_data(region_name)
                     
-                    #Get quota policies
-                    self.load_quotas(self.quotas_client, compartments)
+                        #Get quota policies
+                        self.load_quotas(self.quotas_client, compartments)
                 
                 now = datetime.datetime.now()
                 print("Load quotas time: " + str((now-then).total_seconds()) + " sec")
@@ -527,7 +545,6 @@ class get_snapshot(object):
                            "Statements : ")
                     for statement in policy['statements']:
                         print ("    " + str(statement))
-            ########################################################################################
 
             ########################################################################################
             #If user picks 3, ask which compartment or all compartments
@@ -536,10 +553,12 @@ class get_snapshot(object):
 
                 while stay_here:
                     choice = input("1. Usage of all compartments\n" +
-                                   "2. Usage of a conpartment\n" +
+                                   "2. Usage of a compartment\n" +
                                    "3. Go back\n"
                                    ">"
                                    )
+
+                    #if the user chooses all compartments
                     if choice == '1':
                         stay_compartment = 1
                         if not all_compartments_usage:
@@ -564,6 +583,7 @@ class get_snapshot(object):
                                     print ("all to show all services")
                                     print ("q to go back\n")
 
+                            #show all services in all the compartments
                             elif service == 'all':
                                 current_region = ''
                                 for compartment in compartments:
@@ -575,9 +595,7 @@ class get_snapshot(object):
                                                 if things['used'] != 0:
                                                     if things['region_name'] != current_region:
                                                         current_region = things['region_name']
-                                                        print ("========================================")
-                                                        print ("{  Region: " + current_region + "  }")
-                                                        print ("========================================")
+                                                        print ("[Region: " + current_region + "]")
                                                     print (
                                                         (things['name'] + " ").ljust(20) +
                                                         (things['limit_name']).ljust(37) +
@@ -594,14 +612,14 @@ class get_snapshot(object):
 
                                     print("\n")
 
+                            #go back
                             elif service == 'q':
                                 stay_compartment = 0
                                 break
 
-                            else:          
-                                printed = 0
+                            #show usage of a single service in all compartments
+                            elif service in self.service_list:                 
                                 current_region = ''
-
                                 for compartment in compartments:
                                     print ("========================================")
                                     print ("Compartment: " + compartment['name'])
@@ -611,9 +629,7 @@ class get_snapshot(object):
                                                 if things['name'] == service:
                                                     if things['region_name'] != region_name:
                                                         current_region = things['region_name']
-                                                        print ("========================================")
-                                                        print ("{  Region: " + current_region + "  }")
-                                                        print ("========================================")
+                                                        print ("[Region: " + current_region + "]")
 
                                                     print (
                                                         (things['name'] + " ").ljust(20) +
@@ -625,17 +641,20 @@ class get_snapshot(object):
                                                     printed = 1
                                 print("\n")
 
-                                if printed == 0:
-                                    print ("This compartment does not have any " + service + " services running.\n")
+                            else:
+                                print (service + " is not a valid service. Type help to see all valid services.")
 
-                        pass
+                    #if the user chooses to the the usage in a single compartment
                     if choice == '2':
                         stay_compartment = 1
                         comp_name = ''
                         comp_id = ''
-                        chosen_comp = input("Enter a compartment's OCID or name: ")
                         total_comp_usage = []
 
+                        #ask which compartment the user is trying to get
+                        chosen_comp = input("Enter a compartment's OCID or name: ")
+
+                        #try to find the compartment
                         for compartment in compartments:
                             if chosen_comp == compartment['id']:
                                 comp_id = chosen_comp
@@ -684,9 +703,7 @@ class get_snapshot(object):
                                             if things['region_name'] != current_region:
                                                 current_region = things['region_name']
                                                 print ("\n")
-                                                print ("========================================")
-                                                print ("{  Region: " + current_region + "  }")
-                                                print ("========================================")
+                                                print ("[Region: " + current_region + "]")
 
                                             print (
                                                 (things['name'] + " ").ljust(20) +
@@ -712,10 +729,7 @@ class get_snapshot(object):
                                                 if things['region_name'] != region_name:
                                                     current_region = things['region_name']
                                                     print ("\n")
-                                                    print ("========================================")
-                                                    print ("{  Region: " + current_region + "  }")
-                                                    print ("========================================")
-
+                                                    print ("[Region: " + current_region + "]")
                                                 print (
                                                     (things['name'] + " ").ljust(20) +
                                                     (things['limit_name']).ljust(37) +
@@ -739,14 +753,10 @@ class get_snapshot(object):
                         print("That was not a valid option.")
             ########################################################################################
 
-            ########################################################################################
             #If user picks 4, quit
             elif choice == '4':
                 keep_running = 0
-            ########################################################################################
 
-            ########################################################################################
             #If anything else, print error message and return to top
             else:
                 print ("That was not a valid option. Please try again.")
-            ########################################################################################

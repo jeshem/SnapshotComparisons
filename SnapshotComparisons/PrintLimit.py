@@ -13,6 +13,8 @@ class limit_output_and_compare(object):
     PHX_limits = []
     IAD_limits = []
 
+    all_limits=[]
+
     title = 'NS-OCI Limits '
     latest_file = ''
 
@@ -24,55 +26,46 @@ class limit_output_and_compare(object):
         'scope_type',
         'value',
         'used',
-        'available',
-        'region_name'
-    ]
+        'available'
+        ]
 
     
     def __init__(self, location, limits):
         self.loc = location
-
-        for things in limits:
-            if things['region_name'] == 'eu-frankfurt-1':
-                self.FRA_limits.append(things)
-            elif things['region_name'] == 'us-phoenix-1':
-                self.PHX_limits.append(things)
-            elif things['region_name'] == 'us-ashburn-1':
-               self.IAD_limits.append(things)
-
+        self.all_limits = limits
         pass
 
     def print_limits(self):
         wb = Workbook()
-        FRA_ws = wb.active
-        FRA_ws.title = 'FRA'
-        PHX_ws = wb.create_sheet('PHX')
-        IAD_ws = wb.create_sheet('IAD')
+        current_region = ''
+        test_ws = wb.active
 
-        for key in range(len(self.keys)):
-            FRA_ws.cell(1, key+1).value = self.keys[key]
-            PHX_ws.cell(1, key+1).value = self.keys[key]
-            IAD_ws.cell(1, key+1).value = self.keys[key]
+        for limit in self.all_limits:
 
-        
-        for row in range(len(self.FRA_limits)):
-            thing = self.FRA_limits[row]
+            #if a service is in a different region, create a new worksheet for that region
+            if limit['region_name'] != current_region:
+                print("changing regions!")
+                current_region = limit['region_name']
+                current_ws = wb.create_sheet(limit['region_name'])
+                #reset where the list of services should begin in each worksheet
+                row = 2
+
+
+            #use keys to create column titles
+            for key in range(len(self.keys)):
+                current_ws.cell(1, key+1).value = self.keys[key]
+
+            #if a row is already populated, go down one row
+            if current_ws.cell(row, 1).value != None:
+                row+=1
+
+            #enter limit data into the row
             for col in range(len(self.keys)):
                 key = self.keys[col]
-                FRA_ws.cell(row+2, col+1).value = thing[key]
+                current_ws.cell(row,col+1).value = limit[key]
 
-        for row in range(len(self.PHX_limits)):
-            thing = self.PHX_limits[row]
-            for col in range(len(self.keys)):
-                key = self.keys[col]
-                PHX_ws.cell(row+2, col+1).value = thing[key]
-
-        for row in range(len(self.IAD_limits)):
-            thing = self.IAD_limits[row]
-            for col in range(len(self.keys)):
-                key = self.keys[col]
-                IAD_ws.cell(row+2, col+1).value = thing[key]
-
+        sheet_to_remove = wb.get_sheet_by_name('Sheet')
+        wb.remove_sheet(sheet_to_remove)
         wb.save(self.loc + "\\" + self.title + self.today + ".xlsx")
 
     #find new files and insert them into a list
@@ -104,6 +97,17 @@ class limit_output_and_compare(object):
         else:
             print(self.latest_file)
             self.compare_limits()
+
+    def temp_name(self):
+        last_wb = openpyxl.load_workbook(self.loc + "\\" + self.latest_file)
+        current_region = ''
+
+        for limit in self.all_limits:
+            if limit['region_name'] != current_region:
+                current_region = limit['region_name']
+
+
+        pass
 
     #get the limits from the latest limits excel file and compare them to the current limits
     def compare_limits(self):
