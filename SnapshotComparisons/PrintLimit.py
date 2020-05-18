@@ -105,7 +105,7 @@ class limit_output_and_compare(object):
         for limit in self.all_limits:
             if limit['region_name'] != current_region:
                 current_region = limit['region_name']
-
+                current_ws = last_wb[current_region]
 
         pass
 
