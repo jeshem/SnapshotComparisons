@@ -14,6 +14,7 @@ class limit_output_and_compare(object):
     IAD_limits = []
 
     all_limits=[]
+    all_old_limits = []
 
     title = 'NS-OCI Limits '
     latest_file = ''
@@ -24,7 +25,7 @@ class limit_output_and_compare(object):
         'limit_name',
         'availability_domain',
         'scope_type',
-        'value',
+        'limit',
         'used',
         'available'
         ]
@@ -35,16 +36,17 @@ class limit_output_and_compare(object):
         self.all_limits = limits
         pass
 
-    def print_limits(self):
+    ##########################################################################
+    # Save limits
+    ##########################################################################
+    def save_limits(self):
         wb = Workbook()
         current_region = ''
-        test_ws = wb.active
 
         for limit in self.all_limits:
 
             #if a service is in a different region, create a new worksheet for that region
             if limit['region_name'] != current_region:
-                print("changing regions!")
                 current_region = limit['region_name']
                 current_ws = wb.create_sheet(limit['region_name'])
                 #reset where the list of services should begin in each worksheet
@@ -64,12 +66,18 @@ class limit_output_and_compare(object):
                 key = self.keys[col]
                 current_ws.cell(row,col+1).value = limit[key]
 
+        #remove empty default sheet
         sheet_to_remove = wb.get_sheet_by_name('Sheet')
         wb.remove_sheet(sheet_to_remove)
-        wb.save(self.loc + "\\" + self.title + self.today + ".xlsx")
 
-    #find new files and insert them into a list
-    def find_new_files(self, loc):
+        #save the workbook. The name of the workbook will include the date and time it is created in the format of 'yyyy-mm-dd, hh-mm-ss'
+        self.title = self.title + self.today + ".xlsx"
+        wb.save(self.loc + "\\" + self.title)
+
+    ##########################################################################
+    # Find latest file
+    ##########################################################################
+    def find_latest_file(self, loc):
         dirs = os.listdir(self.loc)
         found_a_file = False
 
@@ -79,7 +87,7 @@ class limit_output_and_compare(object):
         for file in dirs:
             #if the file is a directory, go into it and check for more files
             if os.path.isdir(self.loc + "\\" + file):
-                        list = self.find_new_files(loc + "\\" + file)
+                        list = self.find_latest_file(loc + "\\" + file)
 
             #get the date the limits file was modified/created
             file_create_date = datetime.fromtimestamp(os.path.getctime(loc + "\\" + file))
@@ -92,85 +100,82 @@ class limit_output_and_compare(object):
                 last_date = file_create_date
                 self.latest_file = file
 
+        #if not previous limits file can be found, no comparison can be made
         if self.latest_file == '':
             print("No previous record of limits found")
         else:
-            print(self.latest_file)
-            self.compare_limits()
+            self.retrieve_limits()
 
-    def temp_name(self):
+    ##########################################################################
+    # Retrieve limits
+    ##########################################################################
+    def retrieve_limits(self):
+        print ("Comparing " + self.title + " to: " + self.latest_file)
         last_wb = openpyxl.load_workbook(self.loc + "\\" + self.latest_file)
         current_region = ''
 
-        for limit in self.all_limits:
-            if limit['region_name'] != current_region:
-                current_region = limit['region_name']
-                current_ws = last_wb[current_region]
+        for sheet in last_wb:
+            if sheet.title != 'differences':
+                for row in range(sheet.max_row-1):
+                    old_limit = {}
+                    old_limit['region_name'] = sheet.title
+                    #extract old limit data by the row
+                    for col in range(len(self.keys)):
+                        key = self.keys[col]
+                        old_limit[key] = sheet.cell(row+2,col+1).value
+                    print ("Appending: " + str(old_limit))
+                    self.all_old_limits.append(old_limit)
 
-        pass
-
-    #get the limits from the latest limits excel file and compare them to the current limits
+        last_wb.close()
+        self.compare_limits()
+    
+    ##########################################################################
+    # Compare limits
+    ##########################################################################
     def compare_limits(self):
-        last_wb = openpyxl.load_workbook(self.loc + "\\" + self.latest_file)
-        last_FRA_ws = last_wb['FRA']
-        last_PHX_ws = last_wb['PHX']
-        last_IAD_ws = last_wb['IAD']
+        wb = openpyxl.load_workbook(self.loc + "//" + self.title)
 
-        last_FRA_limits = []
-        last_PHX_limits = []
-        last_IAD_limits = []
+        print(len(self.all_limits))
+        print(len(self.all_old_limits))
 
-        FRA_dif = []
-        PHX_dif = []
-        IAD_dif = []
+        for thing in range(len(self.all_old_limits)):
+            limit_dif = 0
+            
+            #if a service's position is the same with both self.all_old_limits and self.all_limits, get the difference
+            if self.all_old_limits[thing]['limit_name'] == self.all_limits[thing]['limit_name'] and self.all_old_limits[thing]['region_name'] == self.all_limits[thing]['region_name']:
+                limit_dif = self.all_limits[thing]['limit'] - self.all_old_limits[thing]['limit']
+            
+            #else, go down all_limits until you find the correct service
+            else:
+                for n in range(len(self.all_limits) - thing):
+                    offset = thing+n
+                    if self.all_limits[offset]['limit_name'] == self.all_old_limits[thing]['limit_name'] and self.all_limits[offset]['region_name'] == self.all_old_limits[thing]['region_name']:
+                        limit_dif = self.all_limits[offset]['limit'] - self.all_old_limits[thing]['limit']
 
-        #retrieve the limits from each region in the last limits file
-        for row in range(last_FRA_ws.max_row-2):
-            cell_value = last_FRA_ws.cell(row+2, 6).value
-            last_FRA_limits.append(cell_value)
-        for row in range(last_PHX_ws.max_row-2):
-            cell_value = last_PHX_ws.cell(row+2, 6).value
-            last_PHX_limits.append(cell_value)
-        for row in range(last_IAD_ws.max_row-2):
-            cell_value = last_IAD_ws.cell(row+2, 6).value
-            last_IAD_limits.append(cell_value)
+            #if a difference is found
+            if limit_dif != 0:
+                #if a sheet to record differences does not exist, create one
+                if 'differences' not in wb:
+                    dif_ws = wb.create_sheet('differences')
+                    for col in range(len(self.keys)):
+                        key = self.keys[col]
+                        dif_ws.cell(1, col+1).value = key
+                    #change the column name from 'limit' to 'current - last' 
+                    dif_ws.cell(1, 6).value = 'current - last'
+                    #set where the sheet should begin listing the limit differences
+                    row = 2
 
-        #compare limits from last time it was retrieved to the current limits
-        if len(last_FRA_limits)>1:
-            for thing in range(len(last_FRA_limits)):
-                difference = self.FRA_limits[thing]['value'] - last_FRA_limits[thing]
-                val = {'region_name': self.FRA_limits[thing]['region_name'],
-                       'availability_domain': self.FRA_limits[thing]['availability_domain'],
-                       'name': self.FRA_limits[thing]['limit_name'],
-                       'difference': difference}
-                FRA_dif.append(val)
-        if len(last_PHX_limits)>1:
-            for thing in range(len(last_PHX_limits)):
-                difference = self.PHX_limits[thing]['value'] - last_PHX_limits[thing]
-                val = {'region_name': self.PHX_limits[thing]['region_name'],
-                       'availability_domain': self.PHX_limits[thing]['availability_domain'],
-                       'name': self.PHX_limits[thing]['limit_name'],
-                       'difference': difference}
-                PHX_dif.append(val)
-        if len(last_IAD_limits)>1:
-            for thing in range(len(last_PHX_limits)):
-                difference = int(self.IAD_limits[thing]['value']) - int(last_IAD_limits[thing])
-                val = {'region_name': self.IAD_limits[thing]['region_name'],
-                       'availability_domain': self.IAD_limits[thing]['availability_domain'],
-                       'name': self.IAD_limits[thing]['limit_name'],
-                       'difference': difference}
-
-        
-        for thing in FRA_dif:
-            if thing['difference'] != 0:
-                print(str(thing))       
-        for thing in PHX_dif:
-            if thing['difference'] != 0:
-                print(str(thing))
-        for thing in IAD_dif:
-            if thing['difference'] != 0:
-                print(str(thing))
+                #find the first empty row
+                while dif_ws.cell(row, 1).value:
+                    row+=1
 
 
-        pass
+                for col in range(len(self.keys)):
+                    key = self.keys[col]
+                    dif_ws.cell(row, col+1).value = self.all_limits[thing][key]
 
+                dif_ws.cell(row, 6).value = limit_dif
+                dif_ws.cell(row, 9).value = self.all_limits[thing]['region_name']
+
+        wb.save(self.loc + "\\" + self.title)
+        wb.close()

@@ -1,4 +1,5 @@
 import oci
+import sys
 import datetime
 
 class get_snapshot(object):
@@ -29,16 +30,15 @@ class get_snapshot(object):
         #path to your config file
         self.config_file = oci.config.DEFAULT_LOCATION
 
-        #name of the profile you want to use in your config file
-        #self.config_section = oci.config.DEFAULT_PROFILE
-        self.config_section = "TEST"
+        #select the profile you want to use from your config file
+        self.config_section = oci.config.DEFAULT_PROFILE
 
         self.create_signer(self.config_file, self.config_section)
         self.load_identity_main()
         tenancy = self.get_tenancy()
         self.main_menu()
 
-
+        #if the limit has not been retrieved yet, retrieve before leaving
         if not self.limit_data:
             print("Retrieving limit data")
             for region_name in tenancy['list_region_subscriptions']:
@@ -51,15 +51,18 @@ class get_snapshot(object):
     # Create signer
     ##########################################################################
     def create_signer(self, file, section):
-        self.config = oci.config.from_file(file, section)
-        self.signer = oci.signer.Signer(
-            tenancy=self.config["tenancy"],
-            user=self.config["user"],
-            fingerprint=self.config["fingerprint"],
-            private_key_file_location=self.config.get("key_file"),
-            pass_phrase=oci.config.get_config_value_or_default(self.config, "pass_phrase"),
-            private_key_content=self.config.get("key_content")
-        )
+        try:
+            self.config = oci.config.from_file(file, section)
+            self.signer = oci.signer.Signer(
+                tenancy=self.config["tenancy"],
+                user=self.config["user"],
+                fingerprint=self.config["fingerprint"],
+                private_key_file_location=self.config.get("key_file"),
+                pass_phrase=oci.config.get_config_value_or_default(self.config, "pass_phrase"),
+                private_key_content=self.config.get("key_content")
+            )
+        except:
+            sys.exit("Error creating signer from config file. Please check your config file and try again.")
 
     ##########################################################################
     # Initialize data key
@@ -184,9 +187,9 @@ class get_snapshot(object):
                     'name': str(service.name),
                     'description': str(service.description),
                     'limit_name': str(limit.name),
-                    'availability_domain': ("" if limit.availability_domain is None else str(limit.availability_domain)),
+                    'availability_domain': (" " if limit.availability_domain is None else str(limit.availability_domain)),
                     'scope_type': str(limit.scope_type),
-                    'value': int(limit.value),
+                    'limit': int(limit.value),
                     'used': 0,
                     'available': 0,
                     'region_name': str(self.config['region'])
@@ -215,10 +218,10 @@ class get_snapshot(object):
                 print (
                     (val['name'] + " ").ljust(20) +
                     (val['limit_name']).ljust(37) +
-                    ("Limit= " + str(val['value'])).ljust(10) +
-                    ("Used= " + str(val['used'])).ljust(10) + 
-                    ("Available= " + str(val['available'])).ljust(15) +
-                    (val['availability_domain']).ljust(7)
+                    ("Limit= " + str(val['limit'])).ljust(20) +
+                    ("Used= " + str(val['used'])).ljust(20) + 
+                    ("Available= " + str(val['available'])).ljust(20) +
+                    (val['availability_domain']).ljust(20)
                     )
                 # add to array
                 self.limit_data.append(val)
@@ -232,7 +235,6 @@ class get_snapshot(object):
 
         # loop on all compartments
         for compartment in compartments:
-
             # skip Paas compartment
             if self.__if_managed_paas_compartment(compartment['name']):
                 print(".", end="")
@@ -246,6 +248,7 @@ class get_snapshot(object):
                     #print("Service can only run at home region, skipping")
                     return
                 if self.__check_service_error(e.code):
+                    print(str(e.code))
                     self.__load_print_auth_warning()
                 else:
                     raise
@@ -256,7 +259,6 @@ class get_snapshot(object):
 
                 # oci.limits.models.QuotaSummary
                 for arr in quotas:
-
                     val = {
                         'id': str(arr.id),
                         'name': str(arr.name),
@@ -272,11 +274,12 @@ class get_snapshot(object):
 
                     # read quota statements
                     try:
-                        print(arr.id)
                         quota = quotas_client.get_quota(arr.id).data
                         if quota:
                             val['statements'] = quota.statements
                     except oci.exceptions.ServiceError:
+                        print ("Service Error")
+                        print(oci.exceptions.ServiceError)
                         pass
 
                     # add the data
@@ -434,7 +437,7 @@ class get_snapshot(object):
                     'limit_name': str(limit.name),
                     'availability_domain': ("" if limit.availability_domain is None else str(limit.availability_domain)),
                     'scope_type': str(limit.scope_type),
-                    'value': int(limit.value),
+                    'limit': int(limit.value),
                     'used': 0,
                     'available': 0,
                     'region_name': str(self.config['region'])
@@ -463,14 +466,17 @@ class get_snapshot(object):
                 print (
                     (val['name'] + " ").ljust(20) +
                     (val['limit_name']).ljust(37) +
-                    ("Limit= " + str(val['value'])).ljust(10) +
-                    ("Used= " + str(val['used'])).ljust(10) + 
-                    ("Available= " + str(val['available'])).ljust(15) +
-                    (val['availability_domain']).ljust(7)
+                    ("Limit= " + str(val['limit'])).ljust(20) +
+                    ("Used= " + str(val['used'])).ljust(20) + 
+                    ("Available= " + str(val['available'])).ljust(20) +
+                    (val['availability_domain']).ljust(20)
                     )
                 compartment_usage.append(val)
         return compartment_usage
 
+    ##########################################################################
+    # Main Menu
+    ##########################################################################
     def main_menu(self):
         keep_running = 1
         
@@ -489,25 +495,27 @@ class get_snapshot(object):
                            )
             print ("\n")
 
-            #If user picks 1, show tenancy limit
+            #if user picks 1, retrieve and/or display tenancy's limit
             if choice == '1':
                 current_region = ''
                 print("Start getting limits")
                 then = datetime.datetime.now()
 
+                #if the tenancy's limit has not been retrieved yet, retrieve them now
                 if not self.limit_data:
                     for region_name in tenancy['list_region_subscriptions']:
-                        # load region into data
+                        #load region into data
                         self.load_oci_region_data(region_name)
-                        #Get tenancy limits
+                        #get tenancy limits
                         self.load_limits(self.limits_client, tenancy['id'])
                
+                #time how long the retrieval takes
                 now = datetime.datetime.now()
                 print("Load limits time: " + str((now-then).total_seconds()) + " sec")   
 
-
+                #display the tenancy's limits
                 for things in self.limit_data:
-                    if things['value'] != 0:
+                    if things['limit'] != 0:
                         if things['region_name'] != current_region:
                             current_region = things['region_name']
                             print ("\n")
@@ -516,17 +524,18 @@ class get_snapshot(object):
                         print (
                             (things['name'] + " ").ljust(20) +
                             (things['limit_name']).ljust(37) +
-                            ("Limit= " + str(things['value'])).ljust(10) +
-                            ("Used= " + str(things['used'])).ljust(10) + 
-                            ("Available= " + str(things['available'])).ljust(15) +
-                            (things['availability_domain']).ljust(7)
+                            ("Limit= " + str(things['limit'])).ljust(20) +
+                            ("Used= " + str(things['used'])).ljust(20) + 
+                            ("Available= " + str(things['available'])).ljust(20) +
+                            (things['availability_domain']).ljust(20)
                             )
 
-            #If user picks 2, show quota
+            #If user picks 2, show quota policies
             elif choice == '2':
                 print("Start getting quota policies")
                 then = datetime.datetime.now()
 
+                #if the quota policies have not been retrieved yet, retrieve them now
                 if not self.quota_data:
                     for region_name in tenancy['list_region_subscriptions']:
                         # load region into data
@@ -535,9 +544,11 @@ class get_snapshot(object):
                         #Get quota policies
                         self.load_quotas(self.quotas_client, compartments)
                 
+                #time how long the retrieval takes
                 now = datetime.datetime.now()
                 print("Load quotas time: " + str((now-then).total_seconds()) + " sec")
 
+                #display quota policies
                 for policy in self.quota_data:
                     print ("Name: " + policy['name'] + "\n" +
                            "Compartment Name: " + policy['compartment_name'] + "\n" +
@@ -561,6 +572,8 @@ class get_snapshot(object):
                     #if the user chooses all compartments
                     if choice == '1':
                         stay_compartment = 1
+
+                        #if the usages of all the compartments have not been retrieved yet, retrieve them now
                         if not all_compartments_usage:
                             for region_name in tenancy['list_region_subscriptions']:
                                 # load region into data
@@ -573,6 +586,7 @@ class get_snapshot(object):
                                         else:
                                             all_compartments_usage[compartment['name']] = compartment_usage
 
+                        #ask which service the user would like to see the usages for
                         while stay_compartment:
                             service = input("Enter which service you would like to see (help to see valid commands): ")
                         
@@ -599,9 +613,9 @@ class get_snapshot(object):
                                                     print (
                                                         (things['name'] + " ").ljust(20) +
                                                         (things['limit_name']).ljust(37) +
-                                                        ("Used= " + str(things['used'])).ljust(10) + 
+                                                        ("Used= " + str(things['used'])).ljust(20) + 
                                                         ("Available= " + str(things['available'])).ljust(20) +
-                                                        (things['availability_domain']).ljust(7)
+                                                        (things['availability_domain']).ljust(20)
                                                         )
                                             except Exception as e:
                                                 print ("\n")
@@ -634,9 +648,9 @@ class get_snapshot(object):
                                                     print (
                                                         (things['name'] + " ").ljust(20) +
                                                         (things['limit_name']).ljust(37) +
-                                                        ("Used= " + str(things['used'])).ljust(10) + 
-                                                        ("Available= " + str(things['available'])).ljust(15) +
-                                                        (things['availability_domain']).ljust(7)
+                                                        ("Used= " + str(things['used'])).ljust(20) + 
+                                                        ("Available= " + str(things['available'])).ljust(20) +
+                                                        (things['availability_domain']).ljust(20)
                                                         )
                                                     printed = 1
                                 print("\n")
@@ -664,7 +678,6 @@ class get_snapshot(object):
                                 comp_name = chosen_comp
                                 comp_id = compartment['id']
                                 break
-
                         if comp_id == '':
                             print ("Could not find compartment " + chosen_comp)
                             break
@@ -672,10 +685,14 @@ class get_snapshot(object):
                         print("Start getting " + comp_name + " usages")
                         then = datetime.datetime.now()
 
+                        print(compartment)
                         for region_name in tenancy['list_region_subscriptions']:
+                            
+                            print("Looking in: " + region_name)
+                            
                             # load region into data
                             self.load_oci_region_data(region_name)
-                            print(compartment)
+                            
                             # get compartment's usage
                             compartment_usage = self.load_compartment_usage(self.limits_client, comp_id, tenancy['id'])
                             total_comp_usage.append(compartment_usage)
@@ -708,16 +725,13 @@ class get_snapshot(object):
                                             print (
                                                 (things['name'] + " ").ljust(20) +
                                                 (things['limit_name']).ljust(37) +
-                                                ("Used= " + str(things['used'])).ljust(10) + 
+                                                ("Used= " + str(things['used'])).ljust(20) + 
                                                 ("Available= " + str(things['available'])).ljust(20) +
-                                                (things['availability_domain']).ljust(7)
+                                                (things['availability_domain']).ljust(20)
                                                 )
                                 print("\n")
 
-                            elif service == 'q':
-                                stay_compartment = 0
-                                break
-
+                            #If user chooses a service, show usage of that service in compartment
                             elif service in self.service_list:          
                                 printed = 0
                                 current_region = ''
@@ -726,24 +740,31 @@ class get_snapshot(object):
                                     for things in each_usage:
                                         if things['used'] != 0:
                                             if things['name'] == service:
-                                                if things['region_name'] != region_name:
+                                                if things['region_name'] != current_region:
+                                                    print("Changing Region!")
                                                     current_region = things['region_name']
                                                     print ("\n")
                                                     print ("[Region: " + current_region + "]")
                                                 print (
                                                     (things['name'] + " ").ljust(20) +
                                                     (things['limit_name']).ljust(37) +
-                                                    ("Used= " + str(things['used'])).ljust(10) + 
-                                                    ("Available= " + str(things['available'])).ljust(15) +
-                                                    (things['availability_domain']).ljust(7)
+                                                    ("Used= " + str(things['used'])).ljust(20) + 
+                                                    ("Available= " + str(things['available'])).ljust(20) +
+                                                    (things['availability_domain']).ljust(20)
                                                     )
                                                 printed = 1
-                                print("\n")
 
+                                #the program could not find any of the searched service running in the compartment
                                 if printed == 0:
                                     print ("This compartment does not have any " + service + " services running.\n")
+
+                            #choose another compartment
+                            elif service == 'q':
+                                stay_compartment = 0
+                                break
+                            
                             else:
-                                print (service + " is not a valid service. Type help to see all valid services.")
+                                print (service + " is not a valid service. Type help to see all valid services.\n")
                         pass
 
                     if choice == '3':
@@ -757,6 +778,6 @@ class get_snapshot(object):
             elif choice == '4':
                 keep_running = 0
 
-            #If anything else, print error message and return to top
+            #If anything else, print error message and ask user to try again
             else:
                 print ("That was not a valid option. Please try again.")
