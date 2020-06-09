@@ -1,7 +1,9 @@
 from openpyxl import Workbook
+from datetime import datetime
 from datetime import date
 
 class print_usage(object):
+    date = datetime.now()
     today = date.strftime("%Y-%m-%d, %H-%M-%S")
 
     all_usages=[]
