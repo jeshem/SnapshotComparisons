@@ -9,13 +9,10 @@ class limit_output_and_compare(object):
     date = datetime.now()
     today = date.strftime("%Y-%m-%d, %H-%M-%S")
 
-    FRA_limits = []
-    PHX_limits = []
-    IAD_limits = []
-
     all_limits=[]
     all_old_limits = []
 
+    #the file name the limits will be stored under
     title = 'NS-OCI Limits '
     latest_file = ''
 

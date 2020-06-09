@@ -21,6 +21,7 @@ class get_snapshot(object):
 
     limit_data = []
     quota_data = []
+    usage_data = {}
 
     service_list = []
 
@@ -37,15 +38,6 @@ class get_snapshot(object):
         self.load_identity_main()
         tenancy = self.get_tenancy()
         self.main_menu()
-
-        #if the limit has not been retrieved yet, retrieve before leaving
-        if not self.limit_data:
-            print("Retrieving limit data")
-            for region_name in tenancy['list_region_subscriptions']:
-                    # load region into data
-                    self.load_oci_region_data(region_name)
-                    #Get tenancy limits
-                    self.load_limits(self.limits_client, tenancy['id'])
 
     ##########################################################################
     # Create signer
@@ -148,7 +140,7 @@ class get_snapshot(object):
             raise
 
     ##########################################################################
-    # Load limits
+    # Load limits main
     ##########################################################################
     def load_limits_main(self):
 
@@ -225,7 +217,70 @@ class get_snapshot(object):
                     )
                 # add to array
                 self.limit_data.append(val)
-        
+
+    ##########################################################################
+    # get compartment usages, limits, etc.
+    ##########################################################################
+    def load_compartment_usage(self, limits_client, compartment_id, tenancy_id):        
+        compartment_usage = []
+        if not self.services:
+            self.build_services_list(limits_client, tenancy_id)
+
+        # oci.limits.models.ServiceSummary
+        for service in self.services:
+            # get the limits per service
+            limits = []
+            try:
+                limits = oci.pagination.list_call_get_all_results(limits_client.list_limit_values, tenancy_id, service_name=service.name, sort_by="name").data
+            except Exception as e:
+                print("Unexpected error: " + str(e))
+                raise
+
+            # oci.limits.models.LimitValueSummary
+            for limit in limits:
+                val = {
+                    'name': str(service.name),
+                    'description': str(service.description),
+                    'limit_name': str(limit.name),
+                    'availability_domain': ("" if limit.availability_domain is None else str(limit.availability_domain)),
+                    'scope_type': str(limit.scope_type),
+                    'limit': int(limit.value),
+                    'used': 0,
+                    'available': 0,
+                    'region_name': str(self.config['region']),
+                    'compartment_id': str(compartment_id)
+                }
+
+                # if not limit, continue, don't calculate limit = 0
+                if limit.value == 0:
+                    continue
+
+                # get usage per limit if available
+                try:
+                    usage = []
+                    if limit.scope_type == "AD":
+                        usage = limits_client.get_resource_availability(service.name, limit.name, compartment_id, availability_domain=limit.availability_domain).data
+                    else:
+                        usage = limits_client.get_resource_availability(service.name, limit.name, compartment_id).data
+
+                    # oci.limits.models.ResourceAvailability
+                    if usage.used:
+                        val['used'] = int(usage.used)
+                    if usage.available:
+                        val['available'] = int(usage.available)
+                except Exception:
+                    pass
+
+                print (
+                    (val['name'] + " ").ljust(20) +
+                    (val['limit_name']).ljust(37) +
+                    ("Limit= " + str(val['limit'])).ljust(20) +
+                    ("Used= " + str(val['used'])).ljust(20) + 
+                    ("Available= " + str(val['available'])).ljust(20) +
+                    (val['availability_domain']).ljust(20)
+                    )
+                compartment_usage.append(val)
+        return compartment_usage
 
     ##########################################################################
     # load_quotas
@@ -358,6 +413,9 @@ class get_snapshot(object):
     def get_limit_data(self):
         return self.limit_data
 
+    def get_usage_data(self):
+        return self.usage_data
+
     ##########################################################################
     # return tenancy data
     ##########################################################################
@@ -410,69 +468,6 @@ class get_snapshot(object):
     ##########################################################################
     def __if_managed_paas_compartment(self, name):
         return name == "ManagedCompartmentForPaaS"
-
-    ##########################################################################
-    # get compartment usages, limits, etc.
-    ##########################################################################
-    def load_compartment_usage(self, limits_client, compartment_id, tenancy_id):        
-        compartment_usage = []
-        if not self.services:
-            self.build_services_list(limits_client, tenancy_id)
-
-        # oci.limits.models.ServiceSummary
-        for service in self.services:
-            # get the limits per service
-            limits = []
-            try:
-                limits = oci.pagination.list_call_get_all_results(limits_client.list_limit_values, tenancy_id, service_name=service.name, sort_by="name").data
-            except Exception as e:
-                print("Unexpected error: " + str(e))
-                raise
-
-            # oci.limits.models.LimitValueSummary
-            for limit in limits:
-                val = {
-                    'name': str(service.name),
-                    'description': str(service.description),
-                    'limit_name': str(limit.name),
-                    'availability_domain': ("" if limit.availability_domain is None else str(limit.availability_domain)),
-                    'scope_type': str(limit.scope_type),
-                    'limit': int(limit.value),
-                    'used': 0,
-                    'available': 0,
-                    'region_name': str(self.config['region'])
-                }
-
-                # if not limit, continue, don't calculate limit = 0
-                if limit.value == 0:
-                    continue
-
-                # get usage per limit if available
-                try:
-                    usage = []
-                    if limit.scope_type == "AD":
-                        usage = limits_client.get_resource_availability(service.name, limit.name, compartment_id, availability_domain=limit.availability_domain).data
-                    else:
-                        usage = limits_client.get_resource_availability(service.name, limit.name, compartment_id).data
-
-                    # oci.limits.models.ResourceAvailability
-                    if usage.used:
-                        val['used'] = int(usage.used)
-                    if usage.available:
-                        val['available'] = int(usage.available)
-                except Exception:
-                    pass
-
-                print (
-                    (val['name'] + " ").ljust(20) +
-                    (val['limit_name']).ljust(37) +
-                    ("Limit= " + str(val['limit'])).ljust(20) +
-                    ("Used= " + str(val['used'])).ljust(20) + 
-                    ("Available= " + str(val['available'])).ljust(20) +
-                    (val['availability_domain']).ljust(20)
-                    )
-                compartment_usage.append(val)
-        return compartment_usage
 
     ##########################################################################
     # Main Menu
@@ -574,17 +569,17 @@ class get_snapshot(object):
                         stay_compartment = 1
 
                         #if the usages of all the compartments have not been retrieved yet, retrieve them now
-                        if not all_compartments_usage:
+                        if not self.usage_data:
                             for region_name in tenancy['list_region_subscriptions']:
                                 # load region into data
                                 self.load_oci_region_data(region_name)
                                 for compartment in compartments:
                                         print (compartment)
                                         compartment_usage = self.load_compartment_usage(self.limits_client, compartment['id'], tenancy['id'])
-                                        if compartment['name'] in all_compartments_usage:
-                                            all_compartments_usage[compartment['name']] = all_compartments_usage[compartment['name']] + compartment_usage
+                                        if compartment['id'] in self.usage_data:
+                                            self.usage_data[compartment['id']] = self.usage_data[compartment['id']] + compartment_usage
                                         else:
-                                            all_compartments_usage[compartment['name']] = compartment_usage
+                                            self.usage_data[compartment['id']] = compartment_usage
 
                         #ask which service the user would like to see the usages for
                         while stay_compartment:
@@ -604,7 +599,7 @@ class get_snapshot(object):
                                     print ("========================================")
                                     print ("Compartment: " + compartment['name'])
                                     print ("========================================")
-                                    for things in all_compartments_usage[compartment['name']]:
+                                    for things in self.usage_data[compartment['id']]:
                                             try:
                                                 if things['used'] != 0:
                                                     if things['region_name'] != current_region:
@@ -638,7 +633,7 @@ class get_snapshot(object):
                                     print ("========================================")
                                     print ("Compartment: " + compartment['name'])
                                     print ("========================================")
-                                    for things in all_compartments_usage[compartment['name']]:
+                                    for things in self.usage_data[compartment['name']]:
                                             if things['used'] != 0:
                                                 if things['name'] == service:
                                                     if things['region_name'] != region_name:

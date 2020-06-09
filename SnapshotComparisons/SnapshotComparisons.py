@@ -4,8 +4,9 @@ from PrintLimit import limit_output_and_compare
 def main():
 	limits = []
 	
-	#Directory where the snapshots will be stored
-	location = r"C:\Users\shemchen\Desktop\OCI API Calls"
+	#Local directory where the snapshots will be stored
+	limit_location = r"C:\Users\shemchen\Desktop\NSOCI Limit"
+	usage_location = r"C:\Users\shemchen\Desktop\NSOCI Usage"
 
 	snapshot = get_snapshot()
 	limits = snapshot.get_limit_data()
