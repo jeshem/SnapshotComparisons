@@ -1,5 +1,6 @@
 from GetSnapshots import get_snapshot
-from PrintLimit import limit_output_and_compare
+from PrintLimit import print_limit
+from PrintUsage import print_usage
 
 def main():
 	limits = []
@@ -10,11 +11,13 @@ def main():
 
 	snapshot = get_snapshot()
 	limits = snapshot.get_limit_data()
+	usages = snapshot.get_usage_data()
 
 	if limits:
-		compare = limit_output_and_compare(location, limits)
-		compare.save_limits()
-		compare.find_latest_file(location)
+		print_limit(limit_location, limits)
+
+	if usages:
+		print_usage(usage_location, usages)
 
 
 if __name__ == "__main__":

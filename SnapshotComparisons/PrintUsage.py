@@ -1,4 +1,4 @@
-class PrintUsage(object):
+class print_usage(object):
     date = datetime.now()
     today = date.strftime("%Y-%m-%d, %H-%M-%S")
 

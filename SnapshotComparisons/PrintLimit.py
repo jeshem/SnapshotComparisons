@@ -5,7 +5,7 @@ from datetime import date
 import os
 import time
 
-class limit_output_and_compare(object):
+class print_limit(object):
     date = datetime.now()
     today = date.strftime("%Y-%m-%d, %H-%M-%S")
 
@@ -31,6 +31,9 @@ class limit_output_and_compare(object):
     def __init__(self, location, limits):
         self.loc = location
         self.all_limits = limits
+
+        self.save_limits()
+        self.find_latest_file(self.loc)
         pass
 
     ##########################################################################
