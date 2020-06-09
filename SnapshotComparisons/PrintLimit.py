@@ -3,7 +3,6 @@ import openpyxl
 from datetime import datetime
 from datetime import date
 import os
-import time
 
 class print_limit(object):
     date = datetime.now()

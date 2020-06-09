@@ -3,8 +3,6 @@ from PrintLimit import print_limit
 from PrintUsage import print_usage
 
 def main():
-	limits = []
-	
 	#Local directory where the snapshots will be stored
 	limit_location = r"C:\Users\shemchen\Desktop\NSOCI Limit"
 	usage_location = r"C:\Users\shemchen\Desktop\NSOCI Usage"
