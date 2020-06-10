@@ -4,18 +4,17 @@ from PrintUsage import print_usage
 
 def main():
 	#Local directory where the snapshots will be stored
-	limit_location = r"C:\Users\shemchen\Desktop\NSOCI Limit"
-	usage_location = r"C:\Users\shemchen\Desktop\NSOCI Usage"
+	limit_location = r"C:\Users\shemc\Desktop\NSOCI limits"
+	usage_location = r"C:\Users\shemc\Desktop\NSOCI usages"
+
+	#For Windows, use \\. For Mac/Linux, use /
+	path_separator = "\\"
 
 	snapshot = get_snapshot()
 	limits = snapshot.get_limit_data()
-	usages = snapshot.get_usage_data()
 
 	if limits:
-		print_limit(limit_location, limits)
-
-	if usages:
-		print_usage(usage_location, usages)
+		print_limit(limit_location, limits, path_separator)
 
 
 if __name__ == "__main__":

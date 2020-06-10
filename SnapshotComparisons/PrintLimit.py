@@ -27,9 +27,10 @@ class print_limit(object):
         ]
 
     
-    def __init__(self, location, limits):
+    def __init__(self, location, limits, separator):
         self.loc = location
         self.all_limits = limits
+        self.separator = separator
 
         self.save_limits()
         self.find_latest_file(self.loc)
@@ -71,7 +72,7 @@ class print_limit(object):
 
         #save the workbook. The name of the workbook will include the date and time it is created in the format of 'yyyy-mm-dd, hh-mm-ss'
         self.title = self.title + self.today + ".xlsx"
-        wb.save(self.loc + "\\" + self.title)
+        wb.save(self.loc + self.separator + self.title)
 
     ##########################################################################
     # Find latest file
@@ -85,11 +86,11 @@ class print_limit(object):
 
         for file in dirs:
             #if the file is a directory, go into it and check for more files
-            if os.path.isdir(self.loc + "\\" + file):
-                        list = self.find_latest_file(loc + "\\" + file)
+            if os.path.isdir(self.loc + self.separator + file):
+                        list = self.find_latest_file(loc + self.separator + file)
 
             #get the date the limits file was modified/created
-            file_create_date = datetime.fromtimestamp(os.path.getctime(loc + "\\" + file))
+            file_create_date = datetime.fromtimestamp(os.path.getctime(loc + self.separator + file))
 
             #if last_date is still today, set last date to the file's creation date
             if last_date == self.date:
@@ -110,7 +111,7 @@ class print_limit(object):
     ##########################################################################
     def retrieve_limits(self):
         print ("Comparing " + self.title + " to: " + self.latest_file)
-        last_wb = openpyxl.load_workbook(self.loc + "\\" + self.latest_file)
+        last_wb = openpyxl.load_workbook(self.loc + self.separator + self.latest_file)
         current_region = ''
 
         for sheet in last_wb:
@@ -132,7 +133,7 @@ class print_limit(object):
     # Compare limits
     ##########################################################################
     def compare_limits(self):
-        wb = openpyxl.load_workbook(self.loc + "//" + self.title)
+        wb = openpyxl.load_workbook(self.loc + self.separator + self.title)
 
         print(len(self.all_limits))
         print(len(self.all_old_limits))
@@ -176,5 +177,5 @@ class print_limit(object):
                 dif_ws.cell(row, 6).value = limit_dif
                 dif_ws.cell(row, 9).value = self.all_limits[thing]['region_name']
 
-        wb.save(self.loc + "\\" + self.title)
+        wb.save(self.loc + self.separator + self.title)
         wb.close()

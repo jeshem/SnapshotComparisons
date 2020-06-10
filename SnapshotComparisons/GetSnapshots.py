@@ -1,6 +1,7 @@
 import oci
 import sys
 import datetime
+from PrintUsage import print_usage
 
 class get_snapshot(object):
 
@@ -27,12 +28,18 @@ class get_snapshot(object):
 
     warning = 0
 
+    #For Windows, use \\. For Mac/Linux, use /
+    path_separator = "\\"
+
+    usage_location = r"C:\Users\shemc\Desktop\NSOCI usages"
+
     def __init__(self):
         #path to your config file
         self.config_file = oci.config.DEFAULT_LOCATION
 
         #select the profile you want to use from your config file
-        self.config_section = oci.config.DEFAULT_PROFILE
+        #self.config_section = oci.config.DEFAULT_PROFILE
+        self.config_section = "ORACLENETSUITE"
 
         self.create_signer(self.config_file, self.config_section)
         self.load_identity_main()
@@ -601,7 +608,7 @@ class get_snapshot(object):
                                     print ("========================================")
                                     for things in self.usage_data[compartment['id']]:
                                             try:
-                                                if things['used'] != 0:
+                                                if things['limit'] > 0:
                                                     if things['region_name'] != current_region:
                                                         current_region = things['region_name']
                                                         print ("[Region: " + current_region + "]")
@@ -621,11 +628,6 @@ class get_snapshot(object):
 
                                     print("\n")
 
-                            #go back
-                            elif service == 'q':
-                                stay_compartment = 0
-                                break
-
                             #show usage of a single service in all compartments
                             elif service in self.service_list:                 
                                 current_region = ''
@@ -634,7 +636,7 @@ class get_snapshot(object):
                                     print ("Compartment: " + compartment['name'])
                                     print ("========================================")
                                     for things in self.usage_data[compartment['name']]:
-                                            if things['used'] != 0:
+                                            if things['limit'] > 0:
                                                 if things['name'] == service:
                                                     if things['region_name'] != region_name:
                                                         current_region = things['region_name']
@@ -649,6 +651,11 @@ class get_snapshot(object):
                                                         )
                                                     printed = 1
                                 print("\n")
+
+                            #go back
+                            elif service == 'q':
+                                stay_compartment = 0
+                                break
 
                             else:
                                 print (service + " is not a valid service. Type help to see all valid services.")
@@ -682,15 +689,15 @@ class get_snapshot(object):
 
                         print(compartment)
                         for region_name in tenancy['list_region_subscriptions']:
+                            if "phoenix" in region_name or "ashburn" in region_name:
+                                print("Looking in: " + region_name)
                             
-                            print("Looking in: " + region_name)
+                                # load region into data
+                                self.load_oci_region_data(region_name)
                             
-                            # load region into data
-                            self.load_oci_region_data(region_name)
-                            
-                            # get compartment's usage
-                            compartment_usage = self.load_compartment_usage(self.limits_client, comp_id, tenancy['id'])
-                            total_comp_usage.append(compartment_usage)
+                                # get compartment's usage
+                                compartment_usage = self.load_compartment_usage(self.limits_client, comp_id, tenancy['id'])
+                                total_comp_usage.append(compartment_usage)
 
                         now = datetime.datetime.now()
                         print("Load " + comp_name + " usage time: " + str((now-then).total_seconds()) + " sec")
@@ -711,7 +718,7 @@ class get_snapshot(object):
                                 print (comp_name)
                                 for each_usage in total_comp_usage:
                                     for things in each_usage:
-                                        if things['used'] != 0:
+                                        if things['limit'] > 0:
                                             if things['region_name'] != current_region:
                                                 current_region = things['region_name']
                                                 print ("\n")
@@ -733,7 +740,7 @@ class get_snapshot(object):
                                 print (compartment['name'])
                                 for each_usage in total_comp_usage:
                                     for things in each_usage:
-                                        if things['used'] != 0:
+                                        if things['limit'] > 0:
                                             if things['name'] == service:
                                                 if things['region_name'] != current_region:
                                                     print("Changing Region!")
@@ -752,6 +759,11 @@ class get_snapshot(object):
                                 #the program could not find any of the searched service running in the compartment
                                 if printed == 0:
                                     print ("This compartment does not have any " + service + " services running.\n")
+
+                            #print the compartment usage
+                            elif service == 'print':
+                                print_usage(self.usage_location, total_comp_usage, self.path_separator)
+                                print("Exported usages to an excel file")
 
                             #choose another compartment
                             elif service == 'q':
