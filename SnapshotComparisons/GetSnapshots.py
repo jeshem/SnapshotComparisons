@@ -709,7 +709,8 @@ class get_snapshot(object):
                                     print ("Valid options:")
                                     for services in self.service_list:
                                         print(services)
-                                    print ("all to show all services")
+                                    print ("all to show usage of all services")
+                                    print ("print to write usages into an excel file")
                                     print ("q to go back\n")
 
                             #If user chooses 'all', list all usages in compartment that is >0
@@ -763,7 +764,7 @@ class get_snapshot(object):
                             #print the compartment usage
                             elif service == 'print':
                                 print_usage(self.usage_location, total_comp_usage, self.path_separator)
-                                print("Exported usages to an excel file")
+                                print("Exported usages to an excel file to " + self.usage_location)
 
                             #choose another compartment
                             elif service == 'q':
