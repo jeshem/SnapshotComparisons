@@ -706,6 +706,8 @@ class get_snapshot(object):
                         then = datetime.datetime.now()
 
                         print(compartment)
+                        
+                        # ECC: check only regions in scope
                         bInScope = True
                         for region_name in tenancy['list_region_subscriptions']:
                             #if "phoenix" in region_name or "ashburn" in region_name:
