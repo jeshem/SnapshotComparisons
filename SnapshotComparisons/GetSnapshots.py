@@ -25,13 +25,16 @@ class get_snapshot(object):
     usage_data = {}
 
     service_list = []
+    
+    scope_list = []             # limit what regions to look, specify in config   
+    bAllScope = True            # assume cover all regions
 
     warning = 0
 
     #For Windows, use \\. For Mac/Linux, use /
-    path_separator = "\\"
+    path_separator = "/"
 
-    usage_location = r"C:\Users\shemc\Desktop\NSOCI usages"
+    usage_location = r"/Users/edwardcheng/Desktop/NSOCI usages"
 
     def __init__(self):
         #path to your config file
@@ -60,6 +63,21 @@ class get_snapshot(object):
                 pass_phrase=oci.config.get_config_value_or_default(self.config, "pass_phrase"),
                 private_key_content=self.config.get("key_content")
             )
+            
+            # ECC: region scope
+            try:
+                scopeStr = self.config['scope']
+            except:
+                scopeStr = ''
+                
+            scopeStr = scopeStr.strip().lower()
+            if scopeStr == '':
+                scopeStr = "all"
+                
+            print("Get info in these regions: " + scopeStr + "\n")
+            if (scopeStr != 'all'):
+                self.bAllScope = False
+                self.scope_list = scopeStr.split(";")
         except:
             sys.exit("Error creating signer from config file. Please check your config file and try again.")
 
@@ -493,7 +511,7 @@ class get_snapshot(object):
                           "2. Quota Policies\n" +
                           "3. Compartment Usage\n" + 
                           "4. Quit\n" + 
-                          ">"
+                          "> "
                            )
             print ("\n")
 
@@ -568,7 +586,7 @@ class get_snapshot(object):
                     choice = input("1. Usage of all compartments\n" +
                                    "2. Usage of a compartment\n" +
                                    "3. Go back\n"
-                                   ">"
+                                   "> "
                                    )
 
                     #if the user chooses all compartments
@@ -592,7 +610,7 @@ class get_snapshot(object):
                         while stay_compartment:
                             service = input("Enter which service you would like to see (help to see valid commands): ")
                         
-                            if service == 'help':
+                            if service == 'help' or service =='?':
                                     print ("Valid options:")
                                     for service in self.service_list:
                                         print(service)
@@ -688,8 +706,19 @@ class get_snapshot(object):
                         then = datetime.datetime.now()
 
                         print(compartment)
+                        bInScope = True
                         for region_name in tenancy['list_region_subscriptions']:
-                            if "phoenix" in region_name or "ashburn" in region_name:
+                            #if "phoenix" in region_name or "ashburn" in region_name:
+                            if self.bAllScope == False:
+                                
+                                # need to process in scope or not
+                                bInScope = False
+                                for scopeRegion in self.scope_list:
+                                    if scopeRegion.strip() in region_name:
+                                        bInScope = True
+                                        break
+                                 
+                            if bInScope:   
                                 print("Looking in: " + region_name)
                             
                                 # load region into data
@@ -705,7 +734,7 @@ class get_snapshot(object):
                         while stay_compartment:
                             service = input("Enter which service you would like to see (help to see valid commands): ")
                         
-                            if service == 'help':
+                            if service == 'help' or service == '?':
                                     print ("Valid options:")
                                     for services in self.service_list:
                                         print(services)
@@ -719,7 +748,8 @@ class get_snapshot(object):
                                 print (comp_name)
                                 for each_usage in total_comp_usage:
                                     for things in each_usage:
-                                        if things['limit'] > 0:
+                                        #if things['limit'] > 0:
+                                        if things['used'] > 0:
                                             if things['region_name'] != current_region:
                                                 current_region = things['region_name']
                                                 print ("\n")
@@ -741,7 +771,8 @@ class get_snapshot(object):
                                 print (compartment['name'])
                                 for each_usage in total_comp_usage:
                                     for things in each_usage:
-                                        if things['limit'] > 0:
+                                        #if things['limit'] > 0:
+                                        if things['used'] > 0:
                                             if things['name'] == service:
                                                 if things['region_name'] != current_region:
                                                     print("Changing Region!")
